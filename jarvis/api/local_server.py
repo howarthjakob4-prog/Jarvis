@@ -1,4 +1,4 @@
-"""JARVIS local HTTP API — lets you drive JARVIS without the Qt UI.
+"""JARVIS local HTTP API — lets Sidefoid and local clients drive JARVIS.
 
 Endpoints
 ---------
@@ -10,19 +10,17 @@ POST /tool          {"tool": "show_panel", "args": {"panel": "todo"}}
 
 GET  /tools         List all registered tool names.
 GET  /status        Runtime status (ready, provider, etc.).
+GET  /sidefoid      Integration metadata for the Sidefoid dashboard.
 
-Usage
------
-    curl -s http://localhost:8765/status
-    curl -s -X POST http://localhost:8765/chat \
-         -H "Content-Type: application/json" \
-         -d '{"text": "show todo panel"}'
-    curl -s -X POST http://localhost:8765/tool \
-         -H "Content-Type: application/json" \
-         -d '{"tool": "show_panel", "args": {"panel": "todo"}}'
+The server binds only to 127.0.0.1. Browser access is restricted to localhost by
+default. Additional trusted Sidefoid origins may be allowed with the
+JARVIS_ALLOWED_ORIGINS environment variable, for example:
+
+    JARVIS_ALLOWED_ORIGINS=https://example.sidefoid.com,https://sidefoid.pages.dev
 """
 
 import json
+import os
 from typing import TYPE_CHECKING
 
 from aiohttp import web
@@ -33,6 +31,12 @@ if TYPE_CHECKING:
 
 
 _DEFAULT_PORT = 8765
+_DEFAULT_ALLOWED_ORIGINS = (
+    "http://localhost",
+    "https://localhost",
+    "http://127.0.0.1",
+    "https://127.0.0.1",
+)
 
 
 class LocalAPIServer:
@@ -42,13 +46,21 @@ class LocalAPIServer:
         self._runtime = runtime
         self._port = port
         self._runner: web.AppRunner | None = None
+        configured = [
+            value.strip().rstrip("/")
+            for value in os.getenv("JARVIS_ALLOWED_ORIGINS", "").split(",")
+            if value.strip()
+        ]
+        self._allowed_origins = (*_DEFAULT_ALLOWED_ORIGINS, *configured)
 
     async def start(self) -> None:
-        app = web.Application()
+        app = web.Application(middlewares=[self._cors_middleware])
         app.router.add_get("/status", self._handle_status)
         app.router.add_get("/tools", self._handle_tools)
+        app.router.add_get("/sidefoid", self._handle_sidefoid)
         app.router.add_post("/chat", self._handle_chat)
         app.router.add_post("/tool", self._handle_tool)
+        app.router.add_options("/{tail:.*}", self._handle_options)
 
         self._runner = web.AppRunner(app)
         await self._runner.setup()
@@ -61,26 +73,52 @@ class LocalAPIServer:
             await self._runner.cleanup()
             logger.info("JARVIS local API stopped")
 
-    def _check_origin(self, request: web.Request) -> "web.Response | None":
-        """Reject requests whose Origin header is not null or localhost.
+    def _origin_is_allowed(self, origin: str) -> bool:
+        if not origin:
+            return True
+        normalized = origin.rstrip("/")
+        return any(
+            normalized == allowed or normalized.startswith(f"{allowed}:")
+            for allowed in self._allowed_origins
+        )
 
-        Browser-initiated cross-origin requests carry an Origin header;
-        curl and local scripts do not, so they pass through fine.
-        """
+    def _check_origin(self, request: web.Request) -> "web.Response | None":
+        """Reject browser requests from origins that the owner has not trusted."""
         origin = request.headers.get("Origin", "")
-        if origin and not any(origin.startswith(p) for p in (
-            "http://localhost", "https://localhost",
-            "http://127.0.0.1", "https://127.0.0.1",
-        )):
+        if not self._origin_is_allowed(origin):
             return _error("Cross-origin requests not allowed", 403)
         return None
+
+    @web.middleware
+    async def _cors_middleware(self, request: web.Request, handler):
+        blocked = self._check_origin(request)
+        if blocked:
+            return blocked
+
+        response = await handler(request)
+        origin = request.headers.get("Origin", "")
+        if origin and self._origin_is_allowed(origin):
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Vary"] = "Origin"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+            response.headers["Access-Control-Allow-Private-Network"] = "true"
+        return response
+
+    async def _handle_options(self, request: web.Request) -> web.Response:
+        return web.Response(status=204)
 
     async def _handle_status(self, request: web.Request) -> web.Response:
         rt = self._runtime
         providers = []
         if rt.provider_router:
             providers = list(rt.provider_router._providers.keys())
-        return _json({"ready": rt.ready, "providers": providers, "port": self._port})
+        return _json({
+            "ready": rt.ready,
+            "providers": providers,
+            "port": self._port,
+            "integration": "sidefoid-jarvis-v1",
+        })
 
     async def _handle_tools(self, request: web.Request) -> web.Response:
         rt = self._runtime
@@ -89,10 +127,26 @@ class LocalAPIServer:
         names = [d["name"] for d in rt.tool_registry.get_definitions()]
         return _json({"tools": names})
 
+    async def _handle_sidefoid(self, request: web.Request) -> web.Response:
+        rt = self._runtime
+        tools = []
+        if rt.tool_registry:
+            tools = [d["name"] for d in rt.tool_registry.get_definitions()]
+        return _json({
+            "name": "Sidefoid + JARVIS",
+            "bridgeVersion": 1,
+            "ready": rt.ready,
+            "capabilities": {
+                "chat": True,
+                "tools": bool(rt.tool_registry),
+                "voice": True,
+                "computerControl": True,
+            },
+            "toolCount": len(tools),
+        })
+
     async def _handle_chat(self, request: web.Request) -> web.Response:
         """Send a text message as if the user typed it."""
-        if (blocked := self._check_origin(request)):
-            return blocked
         try:
             body = await request.json()
         except Exception:
@@ -110,8 +164,6 @@ class LocalAPIServer:
 
     async def _handle_tool(self, request: web.Request) -> web.Response:
         """Directly call a registered tool by name."""
-        if (blocked := self._check_origin(request)):
-            return blocked
         try:
             body = await request.json()
         except Exception:
