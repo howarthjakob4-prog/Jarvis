@@ -12,9 +12,9 @@ GET  /tools         List all registered tool names.
 GET  /status        Runtime status (ready, provider, etc.).
 GET  /sidefoid      Integration metadata for the Sidefoid dashboard.
 
-The server binds only to 127.0.0.1. Browser access is restricted to localhost by
-default. Additional trusted Sidefoid origins may be allowed with the
-JARVIS_ALLOWED_ORIGINS environment variable.
+The server binds only to 127.0.0.1. Browser access is restricted to trusted
+origins. The production Sidefoid Vercel dashboard is allowed by default, and
+additional trusted origins may be supplied with JARVIS_ALLOWED_ORIGINS.
 """
 
 import json
@@ -34,6 +34,10 @@ _LOOPBACK_ORIGINS = (
     "http://127.0.0.1",
     "https://127.0.0.1",
 )
+_SIDEFOID_ORIGINS = (
+    "https://sidefoidwebsitereadytoupload.vercel.app",
+    "https://sidefoidwebsitereadytoupload-howarthjakob4-progs-projects.vercel.app",
+)
 
 class LocalAPIServer:
     """Thin aiohttp wrapper that exposes the JarvisRuntime over HTTP."""
@@ -41,12 +45,12 @@ class LocalAPIServer:
     def __init__(self, runtime: "JarvisRuntime", port: int = _DEFAULT_PORT) -> None:
         self._runtime = runtime
         self._port = port
-        self._runner: web.AppRunner | None = None
-        self._configured_origins = tuple(
+        configured = tuple(
             value.strip().rstrip("/")
             for value in os.getenv("JARVIS_ALLOWED_ORIGINS", "").split(",")
             if value.strip()
         )
+        self._configured_origins = _SIDEFOID_ORIGINS + configured
 
     async def start(self) -> None:
         app = web.Application(middlewares=[self._cors_middleware])
