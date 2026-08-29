@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 
 _DEFAULT_PORT = 8765
-_DEFAULT_ALLOWED_ORIGINS = (
+_LOOPBACK_ORIGINS = (
     "http://localhost",
     "https://localhost",
     "http://127.0.0.1",
@@ -46,12 +46,11 @@ class LocalAPIServer:
         self._runtime = runtime
         self._port = port
         self._runner: web.AppRunner | None = None
-        configured = [
+        self._configured_origins = tuple(
             value.strip().rstrip("/")
             for value in os.getenv("JARVIS_ALLOWED_ORIGINS", "").split(",")
             if value.strip()
-        ]
-        self._allowed_origins = (*_DEFAULT_ALLOWED_ORIGINS, *configured)
+        )
 
     async def start(self) -> None:
         app = web.Application(middlewares=[self._cors_middleware])
@@ -77,9 +76,11 @@ class LocalAPIServer:
         if not origin:
             return True
         normalized = origin.rstrip("/")
+        if normalized in self._configured_origins:
+            return True
         return any(
             normalized == allowed or normalized.startswith(f"{allowed}:")
-            for allowed in self._allowed_origins
+            for allowed in _LOOPBACK_ORIGINS
         )
 
     def _check_origin(self, request: web.Request) -> "web.Response | None":
@@ -141,6 +142,7 @@ class LocalAPIServer:
                 "tools": bool(rt.tool_registry),
                 "voice": True,
                 "computerControl": True,
+                "projectMode": True,
             },
             "toolCount": len(tools),
         })
