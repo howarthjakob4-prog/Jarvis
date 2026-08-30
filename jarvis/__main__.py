@@ -30,6 +30,7 @@ else:
         pass
 
 from jarvis.app import main, get_runtime
+from jarvis.connectors.mark_li_bridge import get_mark_li_bridge
 
 DEMO_MODE = False
 
@@ -69,6 +70,12 @@ class _EarlyBridgeHandler(BaseHTTPRequestHandler):
         if not self._origin_allowed():
             self._json({"ok": False, "error": "Cross-origin requests not allowed"}, 403)
             return
+
+        if self.path == "/mark-li/status":
+            result = get_mark_li_bridge().status()
+            self._json({"ok": result.ok, **result.data}, 200 if result.ok else 503)
+            return
+
         runtime = get_runtime()
         if self.path == "/status":
             providers = []
@@ -78,8 +85,9 @@ class _EarlyBridgeHandler(BaseHTTPRequestHandler):
                 "ready": bool(runtime and runtime.ready),
                 "providers": providers,
                 "port": 8765,
-                "integration": "jarvis-local-v1",
+                "integration": "jarvis-local-v2-mark-li",
                 "phase": "ready" if runtime and runtime.ready else "starting",
+                "mark_li": get_mark_li_bridge().status().data,
             })
             return
         if self.path == "/tools":
@@ -94,16 +102,42 @@ class _EarlyBridgeHandler(BaseHTTPRequestHandler):
         if not self._origin_allowed():
             self._json({"ok": False, "error": "Cross-origin requests not allowed"}, 403)
             return
-        runtime = get_runtime()
-        if not runtime or not runtime.ready:
-            self._json({"ok": False, "error": "Runtime not ready yet — try again in a moment"}, 503)
-            return
+
         length = int(self.headers.get("Content-Length", "0") or 0)
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
         except Exception:
             self._json({"ok": False, "error": "Invalid JSON"}, 400)
             return
+
+        # Optional Mark-LI engine. These routes stay local and never expose
+        # Mark-LI directly to a public website.
+        mark_li = get_mark_li_bridge()
+        if self.path == "/mark-li/login":
+            pin = str(body.get("pin", "")).strip()
+            if not pin:
+                self._json({"ok": False, "error": "'pin' is required"}, 400)
+                return
+            result = mark_li.login(pin)
+            safe_data = {k: v for k, v in result.data.items() if k != "token"}
+            self._json({"ok": result.ok, **safe_data}, 200 if result.ok else (result.status or 502))
+            return
+
+        if self.path == "/mark-li/command":
+            result = mark_li.command(body.get("text", ""))
+            self._json({"ok": result.ok, **result.data}, 200 if result.ok else (result.status or 502))
+            return
+
+        if self.path == "/mark-li/wake":
+            result = mark_li.wake()
+            self._json({"ok": result.ok, **result.data}, 200 if result.ok else (result.status or 502))
+            return
+
+        runtime = get_runtime()
+        if not runtime or not runtime.ready:
+            self._json({"ok": False, "error": "Runtime not ready yet — try again in a moment"}, 503)
+            return
+
         if self.path == "/chat":
             text = str(body.get("text", "")).strip()
             if not text:
