@@ -87,6 +87,15 @@ def default_settings() -> dict:
             "phone_call": True,
             "text_message": True,
         },
+        "phone_line": {
+            "enabled": True,
+            "owner_number": "",
+            "transport": "direct_cellular",
+            "serial_port": "auto",
+            "call_on_alert": True,
+            "sms_on_alert": True,
+            "ring_seconds": 25,
+        },
         "custom_voice_profile": {
             "label": "Custom imported profile",
             "voice": "en-US-EricNeural",
