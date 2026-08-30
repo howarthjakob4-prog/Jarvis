@@ -77,6 +77,16 @@ def default_settings() -> dict:
         "primary_provider": "mistral",
         "voice_enabled": True,
         "voice_profile": "jarvis",
+        "account": {
+            "display_name": "",
+        },
+        "owner_alerts": {
+            "enabled": True,
+            "notify_on_login": True,
+            "relay_url": "",
+            "phone_call": True,
+            "text_message": True,
+        },
         "custom_voice_profile": {
             "label": "Custom imported profile",
             "voice": "en-US-EricNeural",
