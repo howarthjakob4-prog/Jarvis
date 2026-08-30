@@ -37,6 +37,7 @@ dependencies = [
     "PyQt6>=6.0",
     "pyautogui",
     "pyperclip",
+    "pyserial>=3.5",
     "psutil",
     "pynput",
     "python-dotenv",
