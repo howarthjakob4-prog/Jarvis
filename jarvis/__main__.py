@@ -31,6 +31,7 @@ else:
 
 from jarvis.app import main, get_runtime
 from jarvis.connectors.mark_li_bridge import get_mark_li_bridge
+from jarvis.connectors.owner_alerts import notify_owner_login
 
 DEMO_MODE = False
 
@@ -192,4 +193,5 @@ if __name__ == "__main__":
         sys.argv = [arg for arg in sys.argv if arg != "--demo"]
 
     _early_bridge = _start_early_bridge()
+    threading.Thread(target=notify_owner_login, name="JARVIS-OwnerLoginAlert", daemon=True).start()
     main(demo_mode=DEMO_MODE)
