@@ -1,9 +1,12 @@
-name: Build JARVIS Windows Hotfix
+name: Build JARVIS Windows
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build-windows:
@@ -24,9 +27,9 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install . pyinstaller
+          python -m pip install . pyinstaller accelerate
 
-      - name: Build patched JARVIS EXE
+      - name: Build JARVIS EXE
         shell: pwsh
         run: |
           python build_exe.py
@@ -36,10 +39,19 @@ jobs:
         run: |
           if (!(Test-Path 'dist/JARVIS.exe')) { throw 'dist/JARVIS.exe was not created' }
 
-      - name: Upload patched JARVIS
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: JARVIS-Windows-Bridge-Hotfix
+          name: JARVIS-Windows
           path: dist/JARVIS.exe
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+
+      - name: Publish latest Windows download
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete jarvis-windows-latest --yes --cleanup-tag 2>$null
+          if ($LASTEXITCODE -ne 0) { $global:LASTEXITCODE = 0 }
+          gh release create jarvis-windows-latest dist/JARVIS.exe --title "JARVIS Windows Download" --notes "Latest Windows build of JARVIS." --latest
