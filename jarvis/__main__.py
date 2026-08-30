@@ -5,10 +5,14 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+# Set conservative thread limits before importing the heavy voice/AI stack.
+# This prevents CPU-only PCs from becoming unresponsive during JARVIS startup.
+os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
+os.environ.setdefault("MKL_NUM_THREADS", "2")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "2")
+
 # CUDA DLL bootstrap (MUST run before any ctranslate2 / faster_whisper import)
-# When packaged with PyInstaller, NVIDIA CUDA DLLs land in sys._MEIPASS/nvidia/*/bin/.
-# ctranslate2 searches os.add_dll_directory() paths for cublas/cudnn at import time,
-# so we register those paths here before anything else in the process.
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
     _nvidia_base = os.path.join(sys._MEIPASS, 'nvidia')
     if os.path.exists(_nvidia_base):
@@ -29,12 +33,15 @@ else:
     except Exception:
         pass
 
+from jarvis.performance.cpu_guard import install_cpu_guard
+install_cpu_guard()
+
 from jarvis.app import main, get_runtime
 from jarvis.connectors.mark_li_bridge import get_mark_li_bridge
 from jarvis.connectors.owner_alerts import notify_owner_login
-from jarvis.performance.cpu_guard import install_cpu_guard
 from jarvis.security.christian_approval_gate import install_christian_approval_gate
 from jarvis.ui.phone_setup_patch import install_phone_setup_patch
+from jarvis.voice.reliability_patch import install_voice_reliability_patch
 
 DEMO_MODE = False
 
@@ -114,8 +121,6 @@ class _EarlyBridgeHandler(BaseHTTPRequestHandler):
             self._json({"ok": False, "error": "Invalid JSON"}, 400)
             return
 
-        # Optional Mark-LI engine. These routes stay local and never expose
-        # Mark-LI directly to a public website.
         mark_li = get_mark_li_bridge()
         if self.path == "/mark-li/login":
             pin = str(body.get("pin", "")).strip()
@@ -167,17 +172,31 @@ def _start_early_bridge():
 
 
 def _install_playwright() -> int:
-    """Install Playwright Chromium browser. Called by the NSIS installer post-install."""
-    import subprocess
+    """Install Playwright Chromium correctly in source and frozen EXE builds."""
     print("Installing Playwright Chromium browser...")
+    if getattr(sys, "frozen", False):
+        try:
+            import playwright.__main__ as playwright_main
+            old_argv = list(sys.argv)
+            try:
+                sys.argv = ["playwright", "install", "chromium"]
+                try:
+                    result = playwright_main.main()
+                    code = 0 if result is None else int(result)
+                except SystemExit as exc:
+                    code = int(exc.code or 0)
+            finally:
+                sys.argv = old_argv
+            return code
+        except Exception as exc:
+            print(f"Playwright install failed: {exc}")
+            return 1
+
+    import subprocess
     result = subprocess.run(
         [sys.executable, "-m", "playwright", "install", "chromium"],
         capture_output=False,
     )
-    if result.returncode == 0:
-        print("Playwright Chromium installed successfully.")
-    else:
-        print(f"Playwright install failed (exit {result.returncode}).")
     return result.returncode
 
 
@@ -195,8 +214,8 @@ if __name__ == "__main__":
         DEMO_MODE = True
         sys.argv = [arg for arg in sys.argv if arg != "--demo"]
 
-    install_cpu_guard()
     install_phone_setup_patch()
+    install_voice_reliability_patch()
     install_christian_approval_gate()
     _early_bridge = _start_early_bridge()
     threading.Thread(target=notify_owner_login, name="JARVIS-OwnerLoginAlert", daemon=True).start()
