@@ -34,6 +34,7 @@ from jarvis.connectors.mark_li_bridge import get_mark_li_bridge
 from jarvis.connectors.owner_alerts import notify_owner_login
 from jarvis.performance.cpu_guard import install_cpu_guard
 from jarvis.security.christian_approval_gate import install_christian_approval_gate
+from jarvis.ui.phone_setup_patch import install_phone_setup_patch
 
 DEMO_MODE = False
 
@@ -195,6 +196,7 @@ if __name__ == "__main__":
         sys.argv = [arg for arg in sys.argv if arg != "--demo"]
 
     install_cpu_guard()
+    install_phone_setup_patch()
     install_christian_approval_gate()
     _early_bridge = _start_early_bridge()
     threading.Thread(target=notify_owner_login, name="JARVIS-OwnerLoginAlert", daemon=True).start()
