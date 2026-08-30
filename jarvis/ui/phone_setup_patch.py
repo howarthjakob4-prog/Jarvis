@@ -1,12 +1,16 @@
-"""Add phone/remote approval setup controls to the first-run JARVIS wizard."""
+"""First-run phone setup + responsive setup wizard fixes."""
 
 from __future__ import annotations
 
 import re
+import sys
 
 import yaml
 from loguru import logger
-from PyQt6.QtWidgets import QCheckBox, QFrame, QLabel, QLineEdit, QVBoxLayout
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QApplication, QCheckBox, QFrame, QLabel, QLineEdit, QVBoxLayout, QWidget,
+)
 
 
 def _normalize_phone(value: str) -> str:
@@ -18,72 +22,196 @@ def _normalize_phone(value: str) -> str:
     return ("+" if leading_plus else "") + digits
 
 
-def install_phone_setup_patch() -> None:
-    """Patch the setup wizard so first-run setup asks for the owner's phone number."""
-    from jarvis.ui import setup_wizard as sw
+class PhoneApprovalsPage(QWidget):
+    def __init__(self, sw, parent=None):
+        super().__init__(parent)
+        self.setObjectName("page")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(32, 18, 32, 18)
+        layout.setSpacing(10)
 
-    if getattr(sw.VoicePage, "_phone_setup_patch_installed", False):
-        return
+        section = QLabel("PHONE & REMOTE APPROVALS")
+        section.setObjectName("section")
+        layout.addWidget(section)
 
-    original_voice_init = sw.VoicePage.__init__
-    original_get_config = sw.VoicePage.get_config
-    original_write_config = sw.SetupWizard._write_config
-
-    def voice_init(self, parent=None):
-        original_voice_init(self, parent)
-        layout = self.layout()
-
-        phone_card = QFrame()
-        phone_card.setObjectName("card")
-        phone_layout = QVBoxLayout(phone_card)
-        phone_layout.setContentsMargins(16, 14, 16, 14)
-        phone_layout.setSpacing(7)
-
-        title = QLabel("PHONE & REMOTE APPROVALS")
-        title.setObjectName("section")
-        phone_layout.addWidget(title)
+        title = QLabel("Connect your phone")
+        title.setObjectName("title")
+        title.setWordWrap(True)
+        layout.addWidget(title)
 
         detail = QLabel(
-            "Enter the phone number JARVIS should contact when an owner approval or security alert is needed."
+            "Enter the number JARVIS should contact for owner approvals and security alerts."
         )
         detail.setObjectName("subtitle")
         detail.setWordWrap(True)
-        phone_layout.addWidget(detail)
+        layout.addWidget(detail)
 
-        self._owner_phone = QLineEdit()
-        self._owner_phone.setPlaceholderText("Your phone number, for example +1 555 123 4567")
-        self._owner_phone.setInputMask("")
-        phone_layout.addWidget(self._owner_phone)
+        card = QFrame()
+        card.setObjectName("card")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(16, 14, 16, 14)
+        card_layout.setSpacing(8)
 
-        self._phone_calls = QCheckBox("Allow JARVIS approval calls")
-        self._phone_calls.setChecked(True)
-        phone_layout.addWidget(self._phone_calls)
+        number_label = QLabel("Owner phone number")
+        number_label.setStyleSheet(f"color: {sw.TEXT}; font-size: 12px; font-weight: 600;")
+        card_layout.addWidget(number_label)
 
-        self._phone_texts = QCheckBox("Allow JARVIS approval text notifications")
-        self._phone_texts.setChecked(True)
-        phone_layout.addWidget(self._phone_texts)
+        self.owner_phone = QLineEdit()
+        self.owner_phone.setPlaceholderText("Example: +1 555 123 4567")
+        card_layout.addWidget(self.owner_phone)
+
+        self.calls = QCheckBox("Allow JARVIS approval calls")
+        self.calls.setChecked(True)
+        card_layout.addWidget(self.calls)
+
+        self.texts = QCheckBox("Allow JARVIS approval text notifications")
+        self.texts.setChecked(True)
+        card_layout.addWidget(self.texts)
 
         note = QLabel(
-            "No phone-company choice is required here. JARVIS stores the approved destination number and uses the configured phone-line connection when available."
+            "JARVIS will use its configured phone-line connection. A real cellular/SIM or other connected phone transport is still required for actual calls or texts."
         )
         note.setObjectName("subtitle")
         note.setWordWrap(True)
-        phone_layout.addWidget(note)
+        card_layout.addWidget(note)
 
-        # Put the card before the existing stretch so it stays visible in the page.
-        insert_at = max(0, layout.count() - 1)
-        layout.insertWidget(insert_at, phone_card)
+        layout.addWidget(card)
+        layout.addStretch()
 
-    def get_config(self):
-        cfg = original_get_config(self)
-        phone = _normalize_phone(self._owner_phone.text()) if hasattr(self, "_owner_phone") else ""
-        cfg.update({
+    def get_config(self) -> dict:
+        phone = _normalize_phone(self.owner_phone.text())
+        return {
             "phone_approvals_enabled": bool(phone),
             "owner_phone": phone,
-            "phone_allow_calls": self._phone_calls.isChecked() if hasattr(self, "_phone_calls") else True,
-            "phone_allow_texts": self._phone_texts.isChecked() if hasattr(self, "_phone_texts") else True,
-        })
-        return cfg
+            "phone_allow_calls": self.calls.isChecked(),
+            "phone_allow_texts": self.texts.isChecked(),
+        }
+
+
+def _install_playwright_without_relaunch(worker) -> None:
+    """Install Chromium correctly from a frozen EXE without relaunching JARVIS.exe -m."""
+    worker.item_started.emit("browser")
+    try:
+        if getattr(sys, "frozen", False):
+            import playwright.__main__ as playwright_main
+            old_argv = list(sys.argv)
+            try:
+                sys.argv = ["playwright", "install", "chromium"]
+                try:
+                    result = playwright_main.main()
+                    code = 0 if result is None else int(result)
+                except SystemExit as exc:
+                    code = int(exc.code or 0)
+            finally:
+                sys.argv = old_argv
+            if code == 0:
+                worker.item_done.emit("browser", True, "Chromium ready")
+            else:
+                worker.item_done.emit("browser", False, f"Chromium installer exited with code {code}")
+            return
+
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            capture_output=True, text=True, timeout=300,
+        )
+        if result.returncode == 0:
+            worker.item_done.emit("browser", True, "Chromium ready")
+        else:
+            err = (result.stderr or result.stdout or "unknown error").strip()[:120]
+            worker.item_done.emit("browser", False, err)
+    except Exception as exc:
+        worker.item_done.emit("browser", False, str(exc)[:120])
+
+
+def install_phone_setup_patch() -> None:
+    """Install setup fixes before the first SetupWizard instance is created."""
+    from jarvis.ui import setup_wizard as sw
+
+    if getattr(sw.SetupWizard, "_jarvis_setup_fixes_installed", False):
+        return
+
+    original_init = sw.SetupWizard.__init__
+    original_write_config = sw.SetupWizard._write_config
+    original_show_finish = sw.SetupWizard._show_finish
+
+    def wizard_init(self, parent=None):
+        original_init(self, parent)
+
+        # Keep the setup usable on smaller displays / Windows display scaling.
+        self.setMinimumSize(520, 430)
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            area = screen.availableGeometry()
+            width = max(540, min(700, int(area.width() * 0.84)))
+            height = max(450, min(560, int(area.height() * 0.80)))
+            self.resize(width, height)
+
+        # Put phone setup on its own page instead of hiding it below Voice controls.
+        self._phone = PhoneApprovalsPage(sw)
+        self._stack.insertWidget(5, self._phone)  # Finish shifts from 5 -> 6
+        self._steps._total = 7
+        self._steps.update()
+
+    def go_next(self):
+        page = self._current_page
+        if page == 0:
+            self._syscheck.start_checks()
+            self._animate_to(1)
+            return
+        if page == 1:
+            self._next_btn.setEnabled(False)
+            self._next_btn.setText("Installing…")
+            self._animate_to(2)
+            self._downloads.start_downloads()
+            return
+        if page == 2:
+            self._animate_to(3)
+            return
+        if page == 3:
+            self._config.update(self._provider.get_config())
+            self._animate_to(4)
+            return
+        if page == 4:
+            self._config.update(self._voice.get_config())
+            self._animate_to(5)
+            return
+        if page == 5:
+            self._config.update(self._phone.get_config())
+            self._show_finish()
+            self._animate_to(6)
+            return
+        if page == 6:
+            self._complete_setup()
+
+    def update_nav(self, page=None):
+        if page is None:
+            page = self._current_page
+        self._back_btn.setVisible(page > 0 and page != 2)
+        labels = {
+            0: "Get Started →",
+            1: "Continue →",
+            2: "Continue →",
+            3: "Continue →",
+            4: "Continue →",
+            5: "Continue →",
+            6: "Launch JARVIS  🚀",
+        }
+        self._next_btn.setText(labels.get(page, "Next →"))
+
+    def show_finish(self):
+        original_show_finish(self)
+        phone = self._config.get("owner_phone", "")
+        if phone:
+            provider_name = self._config.get("provider", "unknown")
+            voice_on = self._config.get("voice_enabled", False)
+            summary = [
+                f"Engine: {provider_name}",
+                f"Voice: {'enabled' if voice_on else 'disabled'}",
+                "Phone approvals: configured",
+                "Config saved to %APPDATA%\\JARVIS",
+            ]
+            self._finish.set_summary(summary)
 
     def write_config(self):
         original_write_config(self)
@@ -92,7 +220,7 @@ def install_phone_setup_patch() -> None:
             data = {}
             if path.exists():
                 data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-            data["phone_approvals"] = {
+            phone_cfg = {
                 "enabled": self._config.get("phone_approvals_enabled", False),
                 "owner_phone": self._config.get("owner_phone", ""),
                 "verified": False,
@@ -103,21 +231,38 @@ def install_phone_setup_patch() -> None:
                 "approval_timeout_seconds": 300,
                 "require_verification_code": True,
             }
-            path.write_text(yaml.safe_dump(data, default_flow_style=False, allow_unicode=True), encoding="utf-8")
+            data["phone_approvals"] = phone_cfg
+            path.write_text(
+                yaml.safe_dump(data, default_flow_style=False, allow_unicode=True),
+                encoding="utf-8",
+            )
 
-            try:
-                from jarvis.ui.settings_store import SettingsStore
-                store = SettingsStore()
-                settings = store.load()
-                settings.setdefault("phone_approvals", {})
-                settings["phone_approvals"].update(data["phone_approvals"])
-                store.save(settings)
-            except Exception as exc:
-                logger.warning(f"Could not mirror phone approval settings: {exc}")
+            from jarvis.ui.settings_store import SettingsStore
+            store = SettingsStore()
+            settings = store.load()
+            settings.setdefault("phone_approvals", {}).update(phone_cfg)
+            settings.setdefault("phone_line", {})["owner_number"] = phone_cfg["owner_phone"]
+            settings["phone_line"]["enabled"] = bool(phone_cfg["owner_phone"])
+            settings["phone_line"]["call_on_alert"] = phone_cfg["allow_calls"]
+            settings["phone_line"]["sms_on_alert"] = phone_cfg["allow_texts"]
+            store.save(settings)
         except Exception as exc:
             logger.warning(f"Could not save phone approval setup: {exc}")
 
-    sw.VoicePage.__init__ = voice_init
-    sw.VoicePage.get_config = get_config
+    def downloads_done(self):
+        failures = []
+        for row in getattr(self, "_rows", {}).values():
+            text = row["status"].text()
+            if text.startswith("⚠️"):
+                failures.append(text)
+        self._title.setText("Components ready ✅" if not failures else "Setup finished with warnings")
+        self.all_complete.emit()
+
+    sw.SetupWizard.__init__ = wizard_init
+    sw.SetupWizard._go_next = go_next
+    sw.SetupWizard._update_nav = update_nav
+    sw.SetupWizard._show_finish = show_finish
     sw.SetupWizard._write_config = write_config
-    sw.VoicePage._phone_setup_patch_installed = True
+    sw.DownloadWorker._install_playwright = _install_playwright_without_relaunch
+    sw.DownloadsPage._on_all_done = downloads_done
+    sw.SetupWizard._jarvis_setup_fixes_installed = True
