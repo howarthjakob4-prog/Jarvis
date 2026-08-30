@@ -16,6 +16,21 @@ voice:
   input_device: null
   output_device: null
 
+phone_approvals:
+  enabled: false
+  owner_phone: ""
+  verified: false
+  allow_calls: true
+  allow_texts: true
+  notify_when_lid_closed: true
+  call_if_notification_unanswered: true
+  approval_timeout_seconds: 300
+  require_verification_code: true
+  provider: ""
+  provider_phone_number: ""
+  log_events: true
+  log_file: "data/logs/phone_approvals.log"
+
 ai:
   primary_provider: "groq"
   fallback_order: ["groq", "ollama", "mistral", "gemini", "openrouter", "llamacpp"]
