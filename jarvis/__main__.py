@@ -32,15 +32,16 @@ else:
 from jarvis.app import main, get_runtime
 
 DEMO_MODE = False
-_ALLOWED_ORIGINS = {
-    "https://sidefoidwebsitereadytoupload.vercel.app",
-    "https://sidefoidwebsitereadytoupload-howarthjakob4-progs-projects.vercel.app",
-}
+
 
 class _EarlyBridgeHandler(BaseHTTPRequestHandler):
     def _origin_allowed(self):
         origin = self.headers.get("Origin", "")
-        return (not origin or origin in _ALLOWED_ORIGINS or origin.startswith("http://127.0.0.1") or origin.startswith("http://localhost"))
+        return (
+            not origin
+            or origin.startswith("http://127.0.0.1")
+            or origin.startswith("http://localhost")
+        )
 
     def _headers(self, status=200, content_type="application/json"):
         self.send_response(status)
@@ -77,7 +78,7 @@ class _EarlyBridgeHandler(BaseHTTPRequestHandler):
                 "ready": bool(runtime and runtime.ready),
                 "providers": providers,
                 "port": 8765,
-                "integration": "sidefoid-jarvis-v1",
+                "integration": "jarvis-local-v1",
                 "phase": "ready" if runtime and runtime.ready else "starting",
             })
             return
@@ -86,9 +87,6 @@ class _EarlyBridgeHandler(BaseHTTPRequestHandler):
             if runtime and getattr(runtime, "tool_registry", None):
                 tools = [d["name"] for d in runtime.tool_registry.get_definitions()]
             self._json({"tools": tools})
-            return
-        if self.path == "/sidefoid":
-            self._json({"name": "Sidefoid + JARVIS", "bridgeVersion": 2, "ready": bool(runtime and runtime.ready)})
             return
         self._json({"ok": False, "error": "Not found"}, 404)
 
@@ -143,6 +141,7 @@ def _install_playwright() -> int:
     else:
         print(f"Playwright install failed (exit {result.returncode}).")
     return result.returncode
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="JARVIS Desktop AI Assistant")
