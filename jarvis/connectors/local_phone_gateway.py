@@ -1,13 +1,12 @@
-"""Provider-free JARVIS phone gateway over the local network.
+"""Provider-free JARVIS phone call gateway over the local network.
 
-This is the no-modem/no-telephony path: JARVIS serves a tiny approval dashboard
-straight from the PC. A phone on the same Wi-Fi/LAN opens the dashboard and can
-approve or deny pending JARVIS actions. No carrier, SIM, SMS vendor, or cloud
-telephony provider is required.
+This path does not use a carrier, SIM, SMS vendor, or cloud telephony provider.
+It gives the owner's phone a real incoming-call-style JARVIS screen over Wi-Fi:
+ringtone, vibration where supported, Answer/Decline, spoken alert details, and
+Approve/Deny for protected actions.
 """
 from __future__ import annotations
 
-import html
 import json
 import secrets
 import socket
@@ -25,8 +24,7 @@ _SERVER = None
 
 def _settings() -> tuple[dict, SettingsStore]:
     store = SettingsStore()
-    data = store.load()
-    return data, store
+    return store.load(), store
 
 
 def _access_code() -> str:
@@ -35,9 +33,7 @@ def _access_code() -> str:
     code = str(gateway.get("access_code", "") or "").strip()
     if len(code) < 8:
         code = secrets.token_urlsafe(9)
-        gateway["access_code"] = code
-        gateway["enabled"] = True
-        gateway["port"] = 8766
+        gateway.update({"access_code": code, "enabled": True, "port": 8766})
         store.save(data)
     return code
 
@@ -63,8 +59,8 @@ def enqueue_alert(message: str, *, kind: str = "alert", approval_id: str = "", c
         "kind": str(kind or "alert"),
         "message": str(message or "JARVIS requires owner attention")[:1000],
         "approval_id": str(approval_id or ""),
-        "call_id": str(call_id or ""),
-        "status": "pending",
+        "call_id": str(call_id or secrets.token_hex(6)),
+        "status": "ringing",
         "created_at": time.time(),
     }
     with _LOCK:
@@ -80,7 +76,7 @@ def _snapshot() -> list[dict]:
 
 def _respond(item_id: str, decision: str) -> bool:
     decision = decision.lower().strip()
-    if decision not in {"approved", "denied", "closed"}:
+    if decision not in {"answered", "approved", "denied", "declined", "closed"}:
         return False
     target = None
     with _LOCK:
@@ -92,7 +88,7 @@ def _respond(item_id: str, decision: str) -> bool:
     if not target:
         return False
     approval_id = target.get("approval_id", "")
-    if approval_id and decision in {"approved", "denied"}:
+    if approval_id and decision in {"approved", "denied", "declined"}:
         try:
             from jarvis.app import get_runtime
             runtime = get_runtime()
@@ -106,15 +102,34 @@ def _respond(item_id: str, decision: str) -> bool:
     return True
 
 
-_PAGE = """<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>
-<title>JARVIS Phone Gateway</title><style>
-body{font-family:system-ui;background:#0b1020;color:#eef2ff;margin:0;padding:20px}main{max-width:620px;margin:auto}.card{background:#151c33;border:1px solid #2d3b68;border-radius:16px;padding:16px;margin:12px 0}.pending{border-color:#6387ff}button{border:0;border-radius:10px;padding:12px 16px;margin:6px 8px 0 0;font-weight:700}.yes{background:#79e2a7}.no{background:#ff8d8d}.muted{opacity:.7;font-size:.9rem}h1{margin-bottom:4px}</style></head><body><main><h1>JARVIS</h1><div class='muted'>Owner Phone Gateway • direct local connection</div><div id='items'></div></main>
+_PAGE = r"""<!doctype html><html><head>
+<meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover'>
+<meta name='theme-color' content='#050816'><title>JARVIS Call</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#050816;color:#fff;font-family:system-ui,-apple-system,sans-serif;min-height:100vh}
+main{max-width:620px;margin:auto;padding:20px}.muted{opacity:.65}.card{background:#11182a;border:1px solid #263657;border-radius:18px;padding:16px;margin:12px 0}
+#call{position:fixed;inset:0;background:radial-gradient(circle at 50% 20%,#173464,#050816 62%);display:none;z-index:10;padding:env(safe-area-inset-top) 24px env(safe-area-inset-bottom)}
+.call-inner{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:space-between;text-align:center;padding:60px 0 42px}.orb{width:132px;height:132px;border-radius:50%;border:2px solid #6dc7ff;box-shadow:0 0 45px #2a9cff;background:#0a1831;display:grid;place-items:center;font-size:30px;font-weight:800}.caller{font-size:34px;font-weight:800;margin-top:24px}.state{opacity:.72;margin-top:8px}
+.controls{display:flex;gap:54px}.round{width:78px;height:78px;border-radius:50%;border:0;color:white;font-size:28px;font-weight:800}.answer{background:#21c66b}.decline{background:#ed4b55}
+button.action{border:0;border-radius:12px;padding:14px 18px;font-weight:800;margin:6px 8px 0 0}.yes{background:#7be7ae}.no{background:#ff9299}
+#answerPanel{display:none;max-width:560px;width:100%;background:#10192d;border:1px solid #31517e;border-radius:18px;padding:20px;text-align:left}.status{font-size:13px;opacity:.65}
+</style></head><body>
+<div id='call'><div class='call-inner'><div><div class='orb'>J</div><div class='caller'>JARVIS</div><div class='state' id='callState'>Incoming secure call…</div></div><div id='answerPanel'></div><div class='controls' id='controls'><button class='round decline' onclick='declineCall()'>×</button><button class='round answer' onclick='answerCall()'>✓</button></div></div></div>
+<main><h1>JARVIS Phone</h1><div class='muted'>Private direct Wi-Fi calling gateway</div><div class='card'><b>Ready for JARVIS calls</b><p class='muted'>Keep this page open or add it to your home screen. JARVIS calls appear here without a cellular provider.</p><button class='action yes' onclick='armAudio()'>Enable ringing</button></div><div id='items'></div></main>
 <script>
-const code=new URLSearchParams(location.search).get('code')||'';
-async function load(){let r=await fetch('/api/alerts?code='+encodeURIComponent(code)); if(!r.ok){document.getElementById('items').innerHTML='<div class=card>Access denied.</div>';return} let a=await r.json(); let el=document.getElementById('items'); el.innerHTML=a.length?'':'<div class=card>No alerts waiting.</div>'; for(const x of a){let d=document.createElement('div');d.className='card '+(x.status==='pending'?'pending':'');d.innerHTML='<b>'+esc(x.kind.toUpperCase())+'</b><p>'+esc(x.message)+'</p><div class=muted>'+new Date(x.created_at*1000).toLocaleString()+' • '+esc(x.status)+'</div>'; if(x.status==='pending'&&x.approval_id){d.innerHTML+='<button class=yes onclick="respond(\''+x.id+'\',\'approved\')">Approve</button><button class=no onclick="respond(\''+x.id+'\',\'denied\')">Deny</button>'} el.appendChild(d)}}
+const code=new URLSearchParams(location.search).get('code')||'';let current=null,lastSeen='';let ctx=null,ringTimer=null;
 function esc(s){return String(s).replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]))}
-async function respond(id,status){await fetch('/api/respond',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,id,status})});load()}
-load();setInterval(load,2000);if('Notification'in window)Notification.requestPermission().catch(()=>{});
+function armAudio(){try{ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();ctx.resume();}catch(e){} if('Notification'in window&&Notification.permission==='default')Notification.requestPermission().catch(()=>{});}
+function tone(){if(!ctx)return;let o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=740;g.gain.value=.07;o.connect(g);g.connect(ctx.destination);o.start();o.stop(ctx.currentTime+.28)}
+function startRing(){armAudio();tone();ringTimer=setInterval(tone,1200);if(navigator.vibrate)navigator.vibrate([500,400,500,1200]);}
+function stopRing(){if(ringTimer){clearInterval(ringTimer);ringTimer=null}if(navigator.vibrate)navigator.vibrate(0)}
+function showCall(x){current=x;document.getElementById('call').style.display='block';document.getElementById('callState').textContent='Incoming secure call';document.getElementById('answerPanel').style.display='none';document.getElementById('controls').style.display='flex';startRing();if('Notification'in window&&Notification.permission==='granted')new Notification('JARVIS is calling',{body:x.message,tag:'jarvis-call'});}
+async function answerCall(){if(!current)return;stopRing();await respond(current.id,'answered');document.getElementById('callState').textContent='Connected';let p=document.getElementById('answerPanel');p.style.display='block';document.getElementById('controls').style.display='none';p.innerHTML='<b>JARVIS</b><p>'+esc(current.message)+'</p>'+(current.approval_id?'<button class="action yes" onclick="finish(\'approved\')">Approve</button><button class="action no" onclick="finish(\'denied\')">Deny</button>':'<button class="action yes" onclick="finish(\'closed\')">End call</button>');if('speechSynthesis'in window){speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(current.message));}}
+async function declineCall(){if(!current)return;stopRing();await respond(current.id,'declined');document.getElementById('call').style.display='none';current=null;}
+async function finish(status){if(!current)return;await respond(current.id,status);if('speechSynthesis'in window)speechSynthesis.cancel();document.getElementById('call').style.display='none';current=null;load();}
+async function respond(id,status){return fetch('/api/respond',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,id,status})})}
+async function load(){let r=await fetch('/api/alerts?code='+encodeURIComponent(code));if(!r.ok){document.getElementById('items').innerHTML='<div class=card>Access denied.</div>';return}let a=await r.json();let ringing=a.find(x=>x.status==='ringing');if(ringing&&ringing.id!==lastSeen&&!current){lastSeen=ringing.id;showCall(ringing)}let el=document.getElementById('items');el.innerHTML=a.length?'':'<div class=card>No recent calls.</div>';for(const x of a.slice(0,20)){let d=document.createElement('div');d.className='card';d.innerHTML='<b>'+esc(x.kind.toUpperCase())+'</b><p>'+esc(x.message)+'</p><div class=status>'+new Date(x.created_at*1000).toLocaleString()+' • '+esc(x.status)+'</div>';el.appendChild(d)}}
+armAudio();load();setInterval(load,1000);
 </script></body></html>"""
 
 
@@ -123,6 +138,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(body)
 
@@ -135,28 +151,22 @@ class _Handler(BaseHTTPRequestHandler):
         code = (q.get("code") or [""])[0]
         if parsed.path == "/api/alerts":
             if not self._authorized(code):
-                self._send(403, b'{"error":"denied"}', "application/json")
-                return
-            self._send(200, json.dumps(_snapshot()).encode(), "application/json")
-            return
+                self._send(403, b'{"error":"denied"}', "application/json"); return
+            self._send(200, json.dumps(_snapshot()).encode(), "application/json"); return
         if parsed.path == "/":
-            self._send(200, _PAGE.encode(), "text/html; charset=utf-8")
-            return
+            self._send(200, _PAGE.encode(), "text/html; charset=utf-8"); return
         self._send(404, b"Not found", "text/plain")
 
     def do_POST(self):
         if urlparse(self.path).path != "/api/respond":
-            self._send(404, b"Not found", "text/plain")
-            return
+            self._send(404, b"Not found", "text/plain"); return
         try:
             length = int(self.headers.get("Content-Length", "0") or 0)
             body = json.loads(self.rfile.read(length) or b"{}")
         except Exception:
-            self._send(400, b'{"error":"bad request"}', "application/json")
-            return
+            self._send(400, b'{"error":"bad request"}', "application/json"); return
         if not self._authorized(body.get("code", "")):
-            self._send(403, b'{"error":"denied"}', "application/json")
-            return
+            self._send(403, b'{"error":"denied"}', "application/json"); return
         ok = _respond(str(body.get("id", "")), str(body.get("status", "")))
         self._send(200 if ok else 404, json.dumps({"ok": ok}).encode(), "application/json")
 
@@ -173,5 +183,5 @@ def start_local_phone_gateway(port: int = 8766):
     thread = threading.Thread(target=server.serve_forever, name="JARVIS-PhoneGateway", daemon=True)
     thread.start()
     _SERVER = server
-    print(f"JARVIS phone gateway ready: {get_access_url()}")
+    print(f"JARVIS phone call gateway ready: {get_access_url()}")
     return server
