@@ -9,7 +9,8 @@ import yaml
 from loguru import logger
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QApplication, QCheckBox, QFrame, QLabel, QLineEdit, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QFrame, QLabel, QLineEdit, QPushButton,
+    QVBoxLayout, QWidget,
 )
 
 
@@ -25,6 +26,7 @@ def _normalize_phone(value: str) -> str:
 class PhoneApprovalsPage(QWidget):
     def __init__(self, sw, parent=None):
         super().__init__(parent)
+        self._sw = sw
         self.setObjectName("page")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(32, 18, 32, 18)
@@ -68,8 +70,24 @@ class PhoneApprovalsPage(QWidget):
         self.texts.setChecked(True)
         card_layout.addWidget(self.texts)
 
+        self.line_status = QLabel("Cellular line: not checked yet")
+        self.line_status.setObjectName("subtitle")
+        self.line_status.setWordWrap(True)
+        card_layout.addWidget(self.line_status)
+
+        self.detect_btn = QPushButton("Check Cellular Connection")
+        self.detect_btn.setObjectName("secondary")
+        self.detect_btn.clicked.connect(self._check_cellular)
+        card_layout.addWidget(self.detect_btn)
+
+        self.test_btn = QPushButton("Test My Phone")
+        self.test_btn.setObjectName("primary")
+        self.test_btn.clicked.connect(self._test_phone)
+        card_layout.addWidget(self.test_btn)
+
         note = QLabel(
-            "JARVIS will use its configured phone-line connection. A real cellular/SIM or other connected phone transport is still required for actual calls or texts."
+            "JARVIS automatically looks for a connected cellular modem/SIM. "
+            "If one is ready, Test My Phone sends an alert text and/or places a short test call."
         )
         note.setObjectName("subtitle")
         note.setWordWrap(True)
@@ -77,6 +95,65 @@ class PhoneApprovalsPage(QWidget):
 
         layout.addWidget(card)
         layout.addStretch()
+
+    def _set_status(self, text: str, ok: bool | None = None) -> None:
+        color = self._sw.TEXT_MUTED
+        if ok is True:
+            color = self._sw.SUCCESS
+        elif ok is False:
+            color = self._sw.WARNING
+        self.line_status.setText(text)
+        self.line_status.setStyleSheet(f"color: {color}; font-size: 12px;")
+
+    def _check_cellular(self) -> None:
+        self.detect_btn.setEnabled(False)
+        self._set_status("Checking for a cellular modem/SIM…")
+        QApplication.processEvents()
+        try:
+            from jarvis.connectors.direct_phone_line import status
+            result = status("auto")
+            if result.ok:
+                suffix = f" on {result.port}" if result.port else ""
+                self._set_status(f"Cellular line ready{suffix} ✅", True)
+            else:
+                self._set_status(f"Cellular line not ready: {result.message}", False)
+        except Exception as exc:
+            self._set_status(f"Cellular check failed: {exc}", False)
+        finally:
+            self.detect_btn.setEnabled(True)
+
+    def _test_phone(self) -> None:
+        phone = _normalize_phone(self.owner_phone.text())
+        if not phone:
+            self._set_status("Enter your phone number first.", False)
+            return
+        if not self.calls.isChecked() and not self.texts.isChecked():
+            self._set_status("Turn on calls, texts, or both before testing.", False)
+            return
+
+        self.test_btn.setEnabled(False)
+        self._set_status("Testing JARVIS phone connection…")
+        QApplication.processEvents()
+        try:
+            from jarvis.connectors.direct_phone_line import alert_owner
+            ok = alert_owner(
+                phone,
+                "JARVIS test alert. Your owner phone connection is working.",
+                "auto",
+                sms=self.texts.isChecked(),
+                call=self.calls.isChecked(),
+            )
+            if ok:
+                self._set_status("Test sent successfully ✅", True)
+            else:
+                self._set_status(
+                    "Test could not be sent. Connect/activate a cellular modem or SIM and try again.",
+                    False,
+                )
+        except Exception as exc:
+            self._set_status(f"Phone test failed: {exc}", False)
+        finally:
+            self.test_btn.setEnabled(True)
 
     def get_config(self) -> dict:
         phone = _normalize_phone(self.owner_phone.text())
@@ -138,7 +215,6 @@ def install_phone_setup_patch() -> None:
     def wizard_init(self, parent=None):
         original_init(self, parent)
 
-        # Keep the setup usable on smaller displays / Windows display scaling.
         self.setMinimumSize(520, 430)
         screen = QApplication.primaryScreen()
         if screen is not None:
@@ -147,9 +223,8 @@ def install_phone_setup_patch() -> None:
             height = max(450, min(560, int(area.height() * 0.80)))
             self.resize(width, height)
 
-        # Put phone setup on its own page instead of hiding it below Voice controls.
         self._phone = PhoneApprovalsPage(sw)
-        self._stack.insertWidget(5, self._phone)  # Finish shifts from 5 -> 6
+        self._stack.insertWidget(5, self._phone)
         self._steps._total = 7
         self._steps.update()
 
@@ -245,6 +320,8 @@ def install_phone_setup_patch() -> None:
             settings["phone_line"]["enabled"] = bool(phone_cfg["owner_phone"])
             settings["phone_line"]["call_on_alert"] = phone_cfg["allow_calls"]
             settings["phone_line"]["sms_on_alert"] = phone_cfg["allow_texts"]
+            settings["phone_line"].setdefault("serial_port", "auto")
+            settings["phone_line"].setdefault("transport", "direct_cellular")
             store.save(settings)
         except Exception as exc:
             logger.warning(f"Could not save phone approval setup: {exc}")
