@@ -20,14 +20,15 @@ import androidx.core.content.ContextCompat
 import org.json.JSONObject
 import java.net.DatagramPacket
 import java.net.DatagramSocket
-import java.net.InetAddress
 import java.net.HttpURLConnection
+import java.net.InetAddress
 import java.net.URL
 import java.util.Locale
 import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
-    private lateinit var hostInput: EditText
+    private lateinit var endpointInput: EditText
+    private lateinit var tokenInput: EditText
     private lateinit var macInput: EditText
     private lateinit var commandInput: EditText
     private lateinit var status: TextView
@@ -52,16 +53,18 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             gravity = Gravity.CENTER_HORIZONTAL
         })
 
-        hostInput = field("PC address, e.g. 192.168.1.40")
+        endpointInput = field("JARVIS URL, e.g. http://100.x.x.x:8765")
+        tokenInput = field("Remote pairing token")
         macInput = field("PC MAC address, e.g. AA:BB:CC:DD:EE:FF")
         commandInput = field("Tell JARVIS what to do")
-        root.addView(hostInput)
+        root.addView(endpointInput)
+        root.addView(tokenInput)
         root.addView(macInput)
         root.addView(commandInput)
 
         val wake = Button(this).apply {
             text = "Wake Computer"
-            setOnClickListener { wakeComputer() }
+            setOnClickListener { wakeComputerLocal() }
         }
         val send = Button(this).apply {
             text = "Send To JARVIS"
@@ -77,7 +80,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
 
         status = TextView(this).apply {
-            text = "Ready. Pair this app with your JARVIS PC on the same network."
+            text = "Ready. JARVIS can be reached over a private remote network; no public port-forwarding is required."
             textSize = 16f
             setPadding(0, 24, 0, 0)
         }
@@ -97,7 +100,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         setSingleLine(true)
     }
 
-    private fun wakeComputer() {
+    private fun wakeComputerLocal() {
         val mac = macInput.text.toString().trim()
         if (mac.isBlank()) {
             status.text = "Enter the computer's MAC address first."
@@ -116,7 +119,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     socket.send(DatagramPacket(data, data.size, InetAddress.getByName("255.255.255.255"), 9))
                 }
                 runOnUiThread {
-                    status.text = "Wake signal sent. Computer should power on if Wake-on-LAN is enabled."
+                    status.text = "Wake signal sent."
                     speak("Computer's turning on right now.")
                 }
             } catch (e: Exception) {
@@ -126,27 +129,31 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun sendCommand(text: String) {
-        val host = hostInput.text.toString().trim()
+        val endpoint = endpointInput.text.toString().trim().trimEnd('/')
+        val token = tokenInput.text.toString().trim()
         val command = text.trim()
-        if (host.isBlank() || command.isBlank()) {
-            status.text = "Enter the PC address and a command."
+        if (endpoint.isBlank() || token.isBlank() || command.isBlank()) {
+            status.text = "Enter the JARVIS URL, pairing token, and a command."
             return
         }
         status.text = "Contacting JARVIS..."
         thread {
             try {
-                val conn = URL("http://$host:8765/api/send").openConnection() as HttpURLConnection
+                val conn = URL("$endpoint/api/send").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Authorization", "Bearer $token")
                 conn.doOutput = true
-                conn.connectTimeout = 5000
+                conn.connectTimeout = 8000
                 conn.readTimeout = 125000
                 conn.outputStream.use { it.write(JSONObject().put("text", command).toString().toByteArray()) }
-                val responseText = conn.inputStream.bufferedReader().use { it.readText() }
-                val reply = JSONObject(responseText).optString("response", responseText)
+                val stream = if (conn.responseCode in 200..299) conn.inputStream else conn.errorStream
+                val responseText = stream.bufferedReader().use { it.readText() }
+                val obj = JSONObject(responseText)
+                val reply = obj.optString("response", obj.optString("error", responseText))
                 runOnUiThread {
                     status.text = reply
-                    speak(reply)
+                    if (conn.responseCode in 200..299) speak(reply)
                 }
             } catch (e: Exception) {
                 runOnUiThread { status.text = "JARVIS connection error: ${e.message}" }
@@ -166,8 +173,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 override fun onResults(results: Bundle?) {
                     val heard = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                     status.text = if (heard.isBlank()) "Listening..." else "Heard: $heard"
-                    if (heard.lowercase(Locale.US).contains("wake up jarvis")) wakeComputer()
-                    else if (heard.lowercase(Locale.US).startsWith("jarvis ")) sendCommand(heard.substringAfter("jarvis "))
+                    val lower = heard.lowercase(Locale.US)
+                    if (lower.contains("wake up jarvis")) wakeComputerLocal()
+                    else if (lower.startsWith("jarvis ")) sendCommand(heard.substringAfter("jarvis "))
                     if (keepListening) startListening()
                 }
                 override fun onError(error: Int) { if (keepListening) status.postDelayed({ startListening() }, 700) }
