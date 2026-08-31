@@ -13,15 +13,19 @@ _TABLET_PAGE = """<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>JARVIS Tablet</title>
 <style>
   :root { --bg:#070b14; --panel:#0e1422; --line:rgba(148,163,184,.14);
           --blue:#3b9eff; --text:#dfe5f0; --muted:#7c879d; --warn:#ffb454; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { width:100%; min-height:100%; }
   body { margin:0; background:var(--bg); color:var(--text);
-         font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
-         display:flex; flex-direction:column; min-height:100vh; }
+         font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+         display:flex; flex-direction:column; min-height:100vh; min-height:100dvh;
+         padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom); }
   header { padding:18px 22px; border-bottom:1px solid var(--line);
            display:flex; align-items:center; gap:12px; }
   header .dot { width:10px; height:10px; border-radius:50%; background:var(--blue);
@@ -29,7 +33,7 @@ _TABLET_PAGE = """<!doctype html>
   header b { letter-spacing:4px; font-size:17px; }
   header span { color:var(--muted); font-size:12px; margin-left:auto; text-transform:uppercase; }
   #banner { padding:10px 18px; text-align:center; color:var(--muted); font-size:12px; border-bottom:1px solid var(--line); }
-  #log { flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:12px; min-height:45vh; }
+  #log { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:20px; display:flex; flex-direction:column; gap:12px; min-height:45vh; }
   .msg { max-width:82%; padding:12px 15px; border-radius:15px; font-size:17px;
          line-height:1.45; white-space:pre-wrap; word-wrap:break-word; }
   .you { align-self:flex-end; background:var(--blue); color:#04121f; border-bottom-right-radius:4px; }
@@ -37,24 +41,29 @@ _TABLET_PAGE = """<!doctype html>
             border-bottom-left-radius:4px; }
   .meta { font-size:12px; color:var(--muted); align-self:flex-start; }
   form { display:flex; gap:10px; padding:16px; border-top:1px solid var(--line); }
-  input { flex:1; background:var(--panel); border:1px solid var(--line); color:var(--text);
+  input { flex:1; min-width:0; background:var(--panel); border:1px solid var(--line); color:var(--text);
           border-radius:13px; padding:15px 16px; font-size:18px; outline:none; }
   input:focus { border-color:var(--blue); }
   button { background:var(--blue); color:#04121f; border:none; border-radius:13px;
-           padding:0 24px; font-size:17px; font-weight:700; }
+           padding:0 24px; min-height:52px; font-size:17px; font-weight:700; }
   button:disabled { opacity:.5; }
   #viewer { display:none; padding:28px; text-align:center; color:var(--muted); }
   #blocked { display:none; padding:48px 24px; text-align:center; color:var(--warn); font-size:18px; }
+  @media (orientation:landscape) and (max-height:700px) {
+    header { padding:12px 18px; }
+    #banner { padding:7px 14px; }
+    form { padding:10px 14px; }
+  }
 </style>
 </head>
 <body>
   <header><span class="dot"></span><b>JARVIS</b><span id="role">__ROLE__ tablet</span></header>
-  <div id="banner">Tablet access only • paired session</div>
-  <div id="blocked">This JARVIS remote is for tablets only. Phone access is disabled.</div>
+  <div id="banner">iPad / tablet access • paired session</div>
+  <div id="blocked">This JARVIS remote is for tablets only. Phone and desktop access are disabled.</div>
   <div id="log"></div>
   <div id="viewer">AIM demonstration mode is read-only. JARVIS is online and available for viewing.</div>
   <form id="f">
-    <input id="t" placeholder="Tell JARVIS what to do..." autocomplete="off" autofocus>
+    <input id="t" placeholder="Tell JARVIS what to do..." autocomplete="off" autocapitalize="sentences">
     <button id="b" type="submit">Send</button>
   </form>
 <script>
@@ -67,9 +76,19 @@ _TABLET_PAGE = """<!doctype html>
   const viewer = document.getElementById('viewer');
   const blocked = document.getElementById('blocked');
 
-  function isTabletViewport() {
+  function isIPadOS() {
+    const ua = navigator.userAgent || '';
+    return /iPad/i.test(ua) || (/Macintosh/i.test(ua) && (navigator.maxTouchPoints || 0) > 1);
+  }
+  function isOtherTablet() {
+    const ua = navigator.userAgent || '';
+    if (/Tablet|Kindle|Silk\//i.test(ua)) return true;
+    if (/Android/i.test(ua) && !/Mobile/i.test(ua)) return true;
+    return false;
+  }
+  function isTabletDevice() {
     const shortSide = Math.min(screen.width || innerWidth, screen.height || innerHeight);
-    return shortSide >= 600;
+    return shortSide >= 600 && (isIPadOS() || isOtherTablet());
   }
   function add(text, cls) {
     const d = document.createElement('div');
@@ -80,7 +99,8 @@ _TABLET_PAGE = """<!doctype html>
     return d;
   }
 
-  if (!isTabletViewport()) {
+  const TABLET_OK = isTabletDevice();
+  if (!TABLET_OK) {
     blocked.style.display = 'block';
     log.style.display = 'none';
     form.style.display = 'none';
@@ -88,14 +108,14 @@ _TABLET_PAGE = """<!doctype html>
   } else if (ROLE === 'viewer') {
     form.style.display = 'none';
     viewer.style.display = 'block';
-    add('JARVIS tablet demonstration connected.', 'jarvis');
+    add('JARVIS iPad demonstration connected.', 'jarvis');
   } else {
     add('JARVIS owner tablet connected.', 'jarvis');
   }
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (ROLE !== 'owner') return;
+    if (ROLE !== 'owner' || !TABLET_OK) return;
     const text = input.value.trim();
     if (!text) return;
     input.value = '';
@@ -105,7 +125,11 @@ _TABLET_PAGE = """<!doctype html>
     try {
       const r = await fetch('/api/send', {
         method:'POST',
-        headers:{'Content-Type':'application/json', 'X-JARVIS-TABLET-TOKEN': TOKEN},
+        headers:{
+          'Content-Type':'application/json',
+          'X-JARVIS-TABLET-TOKEN': TOKEN,
+          'X-JARVIS-TABLET-CLIENT': isIPadOS() ? 'ipados' : 'tablet'
+        },
         body: JSON.stringify({text})
       });
       const j = await r.json();
@@ -137,10 +161,10 @@ def _lan_ip() -> str:
 
 
 def _looks_like_tablet(user_agent: str) -> bool:
-    """Reject common phone/desktop user agents; allow common tablet families.
+    """Allow tablet browsers, including modern iPadOS Safari desktop-style UA.
 
-    This is a product gate, not an authentication boundary. Authentication is
-    handled separately with per-session cryptographic tokens.
+    iPadOS Safari may identify itself as Macintosh, so the browser page performs
+    the final touch-capability check. Authentication remains the pairing token.
     """
     ua = (user_agent or "").lower()
     if not ua:
@@ -151,6 +175,10 @@ def _looks_like_tablet(user_agent: str) -> bool:
         return True
     if "android" in ua:
         return "mobile" not in ua
+    # iPadOS 13+ Safari can request desktop-class sites and report Macintosh.
+    # The served page then validates touch support with navigator.maxTouchPoints.
+    if "macintosh" in ua and "safari" in ua:
+        return True
     return False
 
 
@@ -274,7 +302,7 @@ class WebRemoteServer:
                     if role is None:
                         self._reply(401, json.dumps({"error": "unauthorized"}))
                     else:
-                        self._reply(200, json.dumps({"ok": True, "role": role, "tablet_only": True}))
+                        self._reply(200, json.dumps({"ok": True, "role": role, "tablet_only": True, "ipados": True}))
                     return
                 self._reply(404, json.dumps({"error": "not found"}))
 
@@ -289,6 +317,10 @@ class WebRemoteServer:
                     return
                 if not self._tablet_ok():
                     self._reply(403, json.dumps({"error": "tablet access only"}))
+                    return
+                tablet_client = (self.headers.get("X-JARVIS-TABLET-CLIENT") or "").strip().lower()
+                if tablet_client not in {"ipados", "tablet"}:
+                    self._reply(403, json.dumps({"error": "tablet browser verification required"}))
                     return
                 try:
                     length = min(int(self.headers.get("Content-Length", 0)), 16384)
