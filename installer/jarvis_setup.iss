@@ -11,6 +11,7 @@ AllowNoIcons=yes
 LicenseFile=..\LICENSE
 OutputDir=.
 OutputBaseFilename=JARVIS-Setup-v1
+SetupIconFile=..\jarvis.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -29,9 +30,9 @@ Name: "startupentry"; Description: "Start JARVIS &automatically with Windows (ru
 Source: "..\dist\JARVIS\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\JARVIS"; Filename: "{app}\JARVIS.exe"
+Name: "{group}\JARVIS"; Filename: "{app}\JARVIS.exe"; IconFilename: "{app}\JARVIS.exe"
 Name: "{group}\Uninstall JARVIS"; Filename: "{uninstallexe}"
-Name: "{commondesktop}\JARVIS"; Filename: "{app}\JARVIS.exe"; Tasks: desktopicon
+Name: "{commondesktop}\JARVIS"; Filename: "{app}\JARVIS.exe"; IconFilename: "{app}\JARVIS.exe"; Tasks: desktopicon
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "JARVIS"; ValueData: """{app}\JARVIS.exe"" --minimized"; Flags: uninsdeletevalue; Tasks: startupentry
