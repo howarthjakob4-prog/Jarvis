@@ -1,6 +1,7 @@
-
 import asyncio
+import hmac
 import json
+import os
 import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -8,91 +9,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from loguru import logger
 
 _PAGE = """<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>JARVIS Remote</title>
-<style>
-  :root { --bg:#070b14; --panel:#0e1422; --line:rgba(148,163,184,.14);
-          --blue:#3b9eff; --text:#dfe5f0; --muted:#7c879d; }
-  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  body { margin:0; background:var(--bg); color:var(--text);
-         font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
-         display:flex; flex-direction:column; height:100vh; }
-  header { padding:14px 18px; border-bottom:1px solid var(--line);
-           display:flex; align-items:center; gap:10px; }
-  header .dot { width:9px; height:9px; border-radius:50%; background:var(--blue);
-                box-shadow:0 0 10px var(--blue); }
-  header b { letter-spacing:3px; font-size:15px; }
-  header span { color:var(--muted); font-size:11px; margin-left:auto; }
-  #log { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px; }
-  .msg { max-width:84%; padding:10px 13px; border-radius:14px; font-size:15px;
-         line-height:1.4; white-space:pre-wrap; word-wrap:break-word; }
-  .you { align-self:flex-end; background:var(--blue); color:#04121f; border-bottom-right-radius:4px; }
-  .jarvis { align-self:flex-start; background:var(--panel); border:1px solid var(--line);
-            border-bottom-left-radius:4px; }
-  .meta { font-size:11px; color:var(--muted); align-self:flex-start; }
-  form { display:flex; gap:8px; padding:12px; border-top:1px solid var(--line); }
-  input { flex:1; background:var(--panel); border:1px solid var(--line); color:var(--text);
-          border-radius:12px; padding:13px 14px; font-size:16px; outline:none; }
-  input:focus { border-color:var(--blue); }
-  button { background:var(--blue); color:#04121f; border:none; border-radius:12px;
-           padding:0 20px; font-size:16px; font-weight:700; }
-  button:disabled { opacity:.5; }
-</style>
-</head>
-<body>
-  <header><span class="dot"></span><b>JARVIS</b><span>remote</span></header>
-  <div id="log"></div>
-  <form id="f">
-    <input id="t" placeholder="Tell JARVIS what to do..." autocomplete="off" autofocus>
-    <button id="b" type="submit">Send</button>
-  </form>
-<script>
-  const log = document.getElementById('log');
-  const form = document.getElementById('f');
-  const input = document.getElementById('t');
-  const btn = document.getElementById('b');
-  function add(text, cls) {
-    const d = document.createElement('div');
-    d.className = 'msg ' + cls;
-    d.textContent = text;
-    log.appendChild(d);
-    log.scrollTop = log.scrollHeight;
-    return d;
-  }
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const text = input.value.trim();
-    if (!text) return;
-    input.value = '';
-    add(text, 'you');
-    btn.disabled = true;
-    const thinking = add('thinking...', 'meta');
-    try {
-      const r = await fetch('/api/send', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({text})
-      });
-      const j = await r.json();
-      thinking.remove();
-      add(j.response || j.error || '(no response)', 'jarvis');
-    } catch (err) {
-      thinking.remove();
-      add('Connection error: ' + err, 'jarvis');
-    } finally {
-      btn.disabled = false;
-      input.focus();
-    }
-  });
-</script>
-</body>
-</html>"""
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><title>JARVIS Remote</title></head>
+<body style="background:#070b14;color:#dfe5f0;font-family:Segoe UI,system-ui;padding:24px"><h2>JARVIS Remote</h2><p>Use the authorized JARVIS companion app for remote control.</p></body></html>"""
 
 
 def _lan_ip() -> str:
-    """Best-effort local network IP (the address phones should connect to)."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("8.8.8.8", 80))
@@ -103,10 +24,11 @@ def _lan_ip() -> str:
         s.close()
 
 
-class _Bridge:
-    """Sends text through the normal assistant pipeline and awaits the reply
-    by listening for the next AIResponseEvent on the runtime event bus."""
+def _remote_token() -> str:
+    return os.getenv("JARVIS_REMOTE_TOKEN", "").strip()
 
+
+class _Bridge:
     def __init__(self, runtime):
         self.runtime = runtime
         self._pending = None
@@ -150,6 +72,11 @@ class WebRemoteServer:
     def start(self) -> bool:
         if self._httpd is not None:
             return True
+        token = _remote_token()
+        if not token:
+            logger.warning("Web remote disabled: set JARVIS_REMOTE_TOKEN before enabling remote access")
+            return False
+
         from jarvis.app import get_runtime
         runtime = get_runtime()
         if runtime is None or runtime.async_runtime.loop is None:
@@ -168,16 +95,25 @@ class WebRemoteServer:
                 self.send_response(code)
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(data)))
+                self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 try:
                     self.wfile.write(data)
                 except Exception:
                     pass
 
+            def _authorized(self) -> bool:
+                auth = self.headers.get("Authorization", "")
+                expected = f"Bearer {token}"
+                return hmac.compare_digest(auth, expected)
+
             def do_GET(self):
                 if self.path == "/" or self.path.startswith("/?"):
                     self._reply(200, page, "text/html; charset=utf-8")
                 elif self.path == "/api/status":
+                    if not self._authorized():
+                        self._reply(401, json.dumps({"error": "unauthorized"}))
+                        return
                     self._reply(200, json.dumps({"ok": True}))
                 else:
                     self._reply(404, json.dumps({"error": "not found"}))
@@ -186,9 +122,15 @@ class WebRemoteServer:
                 if self.path != "/api/send":
                     self._reply(404, json.dumps({"error": "not found"}))
                     return
+                if not self._authorized():
+                    self._reply(401, json.dumps({"error": "unauthorized"}))
+                    return
                 try:
                     length = int(self.headers.get("Content-Length", 0))
-                    raw = self.rfile.read(length) if length else b"{}"
+                    if length <= 0 or length > 65536:
+                        self._reply(400, json.dumps({"error": "invalid request size"}))
+                        return
+                    raw = self.rfile.read(length)
                     text = (json.loads(raw.decode("utf-8")).get("text") or "").strip()
                 except Exception:
                     text = ""
@@ -199,7 +141,8 @@ class WebRemoteServer:
                     fut = asyncio.run_coroutine_threadsafe(bridge.ask(text), loop)
                     reply = fut.result(timeout=125)
                 except Exception as e:
-                    reply = f"Error: {e}"
+                    logger.warning(f"Remote command failed: {e}")
+                    reply = "JARVIS could not complete that remote request."
                 self._reply(200, json.dumps({"response": reply}))
 
         try:
@@ -208,11 +151,9 @@ class WebRemoteServer:
             logger.warning(f"Web remote could not bind port {self.port}: {e}")
             self._httpd = None
             return False
-        self._thread = threading.Thread(
-            target=self._httpd.serve_forever, daemon=True, name="JarvisWebRemote"
-        )
+        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True, name="JarvisWebRemote")
         self._thread.start()
-        logger.info(f"Web remote serving at {self.url()}")
+        logger.info(f"Authenticated web remote serving at {self.url()}")
         return True
 
     def stop(self) -> None:
