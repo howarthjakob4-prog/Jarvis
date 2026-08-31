@@ -1,8 +1,8 @@
 """Owner alerts for JARVIS.
 
-JARVIS first tries its direct cellular phone line. If that is unavailable, it
-can fall back to the configured remote relay. Alerts are queued locally if no
-path is currently available, so they are not silently lost.
+JARVIS tries its direct cellular line first, then a configured remote relay,
+then the provider-free local phone gateway. Alerts are queued locally if every
+path is unavailable, so they are not silently lost.
 """
 
 from __future__ import annotations
@@ -52,20 +52,16 @@ def _direct_phone_alert(settings: dict, payload: dict) -> bool:
     phone = settings.get("phone_line", {}) if isinstance(settings, dict) else {}
     if phone.get("enabled", True) is False:
         return False
-
     owner_number = str(phone.get("owner_number", "") or os.environ.get("JARVIS_OWNER_PHONE", "")).strip()
     if not owner_number:
         return False
-
     try:
         from jarvis.connectors.direct_phone_line import alert_owner
-
         username = payload.get("username", "Unknown user")
         device = payload.get("device_name", "Unknown device")
         event = payload.get("event", "jarvis_alert")
         detail = payload.get("message", "JARVIS requires owner attention.")
         message = f"JARVIS ALERT: {detail} User: {username}. Device: {device}. Event: {event}."
-
         return alert_owner(
             owner_number,
             message,
@@ -83,15 +79,9 @@ def _relay_alert(settings: dict, payload: dict) -> bool:
     relay_url = str(alerts.get("relay_url", "") or os.environ.get("JARVIS_OWNER_ALERT_URL", "")).strip()
     if not relay_url:
         return False
-
     try:
         body = json.dumps(payload).encode("utf-8")
-        req = request.Request(
-            relay_url,
-            data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+        req = request.Request(relay_url, data=body, headers={"Content-Type": "application/json"}, method="POST")
         with request.urlopen(req, timeout=8) as response:
             return 200 <= int(response.status) < 300
     except Exception as exc:
@@ -99,34 +89,44 @@ def _relay_alert(settings: dict, payload: dict) -> bool:
         return False
 
 
+def _local_gateway_alert(payload: dict) -> bool:
+    try:
+        from jarvis.connectors.local_phone_gateway import enqueue_alert
+        event = str(payload.get("event", "jarvis_alert"))
+        detail = str(payload.get("message", "JARVIS requires owner attention."))
+        username = str(payload.get("username", "Unknown user"))
+        device = str(payload.get("device_name", "Unknown device"))
+        enqueue_alert(f"{detail} User: {username}. Device: {device}.", kind=event)
+        return True
+    except Exception as exc:
+        logger.warning(f"Local phone gateway unavailable: {exc}")
+        return False
+
+
 def notify_owner(payload: dict) -> bool:
-    """Deliver an owner alert using the direct line first, then relay fallback."""
     settings = _settings()
     alerts = settings.get("owner_alerts", {}) if isinstance(settings, dict) else {}
     if alerts.get("enabled", True) is False:
         return False
-
     if _direct_phone_alert(settings, payload):
         logger.info("Owner alert sent through direct JARVIS phone line")
         return True
-
     if _relay_alert(settings, payload):
         logger.info("Owner alert sent through remote relay")
         return True
-
+    if _local_gateway_alert(payload):
+        logger.info("Owner alert sent to provider-free local phone gateway")
+        return True
     _queue_alert(payload)
     logger.info("Owner alert queued because no phone path is currently ready")
     return False
 
 
 def notify_owner_login() -> bool:
-    """Notify the owner that a JARVIS account/session has started."""
     settings = _settings()
     alerts = settings.get("owner_alerts", {}) if isinstance(settings, dict) else {}
-
     if alerts.get("enabled", True) is False or alerts.get("notify_on_login", True) is False:
         return False
-
     payload = {
         "event": "jarvis_login",
         "username": _display_name(settings),
@@ -139,7 +139,6 @@ def notify_owner_login() -> bool:
 
 
 def notify_owner_approval_request(username: str, request_summary: str, request_id: str = "") -> bool:
-    """Notify the owner that a user request is waiting for approval."""
     payload = {
         "event": "approval_required",
         "username": str(username or "Unknown user"),
@@ -153,7 +152,6 @@ def notify_owner_approval_request(username: str, request_summary: str, request_i
 
 
 def notify_owner_security_lockdown(username: str, reason: str) -> bool:
-    """Notify the owner that JARVIS security restrictions triggered a lockdown."""
     payload = {
         "event": "security_lockdown",
         "username": str(username or "Unknown user"),
