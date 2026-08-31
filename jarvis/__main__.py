@@ -39,6 +39,7 @@ install_cpu_guard()
 from jarvis.app import main, get_runtime
 from jarvis.connectors.mark_li_bridge import get_mark_li_bridge
 from jarvis.connectors.owner_alerts import notify_owner_login
+from jarvis.connectors.local_phone_gateway import start_local_phone_gateway
 from jarvis.security.christian_approval_gate import install_christian_approval_gate
 from jarvis.ui.phone_setup_patch import install_phone_setup_patch
 from jarvis.voice.reliability_patch import install_voice_reliability_patch
@@ -218,5 +219,10 @@ if __name__ == "__main__":
     install_voice_reliability_patch()
     install_christian_approval_gate()
     _early_bridge = _start_early_bridge()
+    try:
+        _phone_gateway = start_local_phone_gateway()
+    except OSError as exc:
+        print(f"JARVIS phone gateway could not start: {exc}")
+        _phone_gateway = None
     threading.Thread(target=notify_owner_login, name="JARVIS-OwnerLoginAlert", daemon=True).start()
     main(demo_mode=DEMO_MODE)
