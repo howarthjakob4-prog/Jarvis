@@ -28,30 +28,31 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install . pyinstaller accelerate
+          choco install innosetup -y --no-progress
 
-      - name: Build JARVIS EXE
+      - name: Build JARVIS installer
         shell: pwsh
         run: |
-          python build_exe.py
+          python build_exe.py --installer
 
-      - name: Verify EXE exists
+      - name: Verify installer exists
         shell: pwsh
         run: |
-          if (!(Test-Path 'dist/JARVIS.exe')) { throw 'dist/JARVIS.exe was not created' }
+          if (!(Test-Path 'installer/JARVIS-Setup-v1.exe')) { throw 'JARVIS installer was not created' }
 
-      - name: Upload build artifact
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: JARVIS-Windows
-          path: dist/JARVIS.exe
+          name: JARVIS-Windows-Installer
+          path: installer/JARVIS-Setup-v1.exe
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14
 
-      - name: Publish latest Windows download
+      - name: Publish latest Windows installer
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete jarvis-windows-latest --yes --cleanup-tag 2>$null
           if ($LASTEXITCODE -ne 0) { $global:LASTEXITCODE = 0 }
-          gh release create jarvis-windows-latest dist/JARVIS.exe --title "JARVIS Windows Download" --notes "Latest Windows build of JARVIS." --latest
+          gh release create jarvis-windows-latest installer/JARVIS-Setup-v1.exe --title "JARVIS Windows Installer" --notes "Low-storage Windows installer. Browser automation components are optional and are not downloaded during setup." --latest

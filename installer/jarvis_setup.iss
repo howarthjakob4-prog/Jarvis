@@ -2,9 +2,9 @@
 AppName=JARVIS
 AppVersion=1
 AppPublisher=MrClipperz
-AppPublisherURL=https://github.com/ONEPUNCHMAN411/Jarvis
-AppSupportURL=https://github.com/ONEPUNCHMAN411/Jarvis/issues
-AppUpdatesURL=https://github.com/ONEPUNCHMAN411/Jarvis/releases
+AppPublisherURL=https://github.com/howarthjakob4-prog/Jarvis
+AppSupportURL=https://github.com/howarthjakob4-prog/Jarvis/issues
+AppUpdatesURL=https://github.com/howarthjakob4-prog/Jarvis/releases
 DefaultDirName={autopf}\JARVIS
 DefaultGroupName=JARVIS
 AllowNoIcons=yes
@@ -37,7 +37,6 @@ Name: "{commondesktop}\JARVIS"; Filename: "{app}\JARVIS.exe"; Tasks: desktopicon
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "JARVIS"; ValueData: """{app}\JARVIS.exe"" --minimized"; Flags: uninsdeletevalue; Tasks: startupentry
 
 [Run]
-Filename: "{app}\JARVIS.exe"; Parameters: "--install-playwright"; StatusMsg: "Installing browser automation components..."; Flags: runhidden waituntilterminated
 Filename: "{app}\JARVIS.exe"; Description: "Launch JARVIS now"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
@@ -47,6 +46,6 @@ Type: filesandordirs; Name: "{app}"
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then begin
-    // Startup registry written by [Registry] section only if task selected
+    // Keep setup lightweight. Optional browser automation can be installed later on demand.
   end;
 end;
