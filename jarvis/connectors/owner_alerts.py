@@ -96,7 +96,15 @@ def _local_gateway_alert(payload: dict) -> bool:
         detail = str(payload.get("message", "JARVIS requires owner attention."))
         username = str(payload.get("username", "Unknown user"))
         device = str(payload.get("device_name", "Unknown device"))
-        enqueue_alert(f"{detail} User: {username}. Device: {device}.", kind=event)
+        request_id = str(payload.get("request_id", "") or "")
+        approval_id = request_id.split("/")[0].strip() if event == "approval_required" else ""
+        call_id = request_id.split("/", 1)[1].strip() if event == "approval_required" and "/" in request_id else ""
+        enqueue_alert(
+            f"{detail} User: {username}. Device: {device}.",
+            kind=event,
+            approval_id=approval_id,
+            call_id=call_id,
+        )
         return True
     except Exception as exc:
         logger.warning(f"Local phone gateway unavailable: {exc}")
