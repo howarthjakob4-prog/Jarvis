@@ -25,7 +25,6 @@ def _ensure_cuda_packages() -> bool:
     They are only ~300 MB and only load at runtime when a GPU is present.
     Skipping them means EXE users with GPUs get CPU-only voice — not acceptable."""
 
-    # Quick NVIDIA GPU check via wmic (doesn't require torch)
     gpu_name = "unknown GPU"
     try:
         r = subprocess.run(
@@ -37,7 +36,6 @@ def _ensure_cuda_packages() -> bool:
                 gpu_name = line.split("=", 1)[-1].strip()
                 break
         else:
-            # No NVIDIA GPU line found — still install packages; harmless on CPU
             print("[*] No NVIDIA GPU detected via wmic — installing CUDA packages anyway (harmless on CPU)")
     except Exception:
         print("[*] GPU detection skipped — installing CUDA packages anyway")
@@ -67,7 +65,6 @@ def build_exe():
     dist_dir   = jarvis_dir / "dist"
     build_dir  = jarvis_dir / "build"
 
-    # Kill any running JARVIS.exe so it doesn't lock the dist folder
     try:
         subprocess.run(
             ["taskkill", "/f", "/im", "JARVIS.exe"],
@@ -76,10 +73,8 @@ def build_exe():
     except Exception:
         pass
 
-    # Ensure CUDA packages are installed so PyInstaller can bundle CUDA DLLs
     _ensure_cuda_packages()
 
-    # Clean previous output
     print("[*] Cleaning up old releases...")
     for p in [dist_dir, build_dir]:
         if p.exists():
@@ -90,12 +85,12 @@ def build_exe():
 
     print("[*] Running PyInstaller...")
 
-    # Use --onedir for installer builds so NSIS can reference the folder.
-    # Still produces a single logical "app" from the user's perspective via the installer.
     build_mode = "--onedir" if "--installer" in sys.argv else "--onefile"
 
-    # Icon path — fall back gracefully if missing
-    icon_path = jarvis_dir / "assets" / "jarvis.ico"
+    # The repository's approved Windows icon lives at the project root.
+    # The previous build looked in assets/jarvis.ico, which does not exist,
+    # causing Windows to show a generic executable/disc icon.
+    icon_path = jarvis_dir / "jarvis.ico"
     icon_args = ["--icon", str(icon_path)] if icon_path.exists() else []
 
     cmd = [
@@ -107,44 +102,23 @@ def build_exe():
         f"--distpath={dist_dir}",
         f"--workpath={build_dir}",
         *icon_args,
-
-        # Data files
         "--add-data", f"{jarvis_dir / 'config'}:config",
         "--add-data", f"{jarvis_dir / 'jarvis' / 'ui' / 'assets'}:jarvis/ui/assets",
-
-        # Large binary packages — collect binaries + data
         "--collect-all=aiohttp",
         "--collect-all=ctranslate2",
         "--collect-all=faster_whisper",
         "--collect-all=openwakeword",
         "--collect-all=onnxruntime",
         "--collect-all=playwright",
-
-        # silero-vad ONNX model file (runs via onnxruntime, torch not required)
         "--collect-data=silero_vad",
-
-        # tqdm metadata (required by huggingface_hub / faster_whisper download)
         "--copy-metadata=tqdm",
-
-        # accelerate metadata (required by transformers version check)
         "--copy-metadata=accelerate",
-
-        # NOTE: CUDA DLLs (nvidia.cublas/cudnn/cuda_runtime/curand) are NOT bundled.
-        # ctranslate2 loads them from the user's CUDA/cuDNN installation at runtime.
-        # Bundling them adds 3+ GB and breaks the 2 GB GitHub release file limit.
-        # GPU acceleration works on any machine with CUDA 12 drivers installed.
-
-        # Exclusions — crash-prone or not used by JARVIS
         "--exclude-module=antigravity",
         "--exclude-module=turtle",
         "--exclude-module=tkinter",
         "--exclude-module=test",
-        # grpc native DLLs cause STATUS_STACK_BUFFER_OVERRUN on startup.
-        # google.generativeai uses REST, not gRPC — safe to exclude.
         "--exclude-module=grpc",
         "--exclude-module=grpcio",
-        # Large torch transitive deps not used by JARVIS — excluding these
-        # keeps the bundle under PyInstaller's 4 GB CArchive limit.
         "--exclude-module=scipy",
         "--exclude-module=pandas",
         "--exclude-module=matplotlib",
@@ -162,13 +136,7 @@ def build_exe():
         "--exclude-module=IPython",
         "--exclude-module=notebook",
         "--exclude-module=jupyterlab",
-        # torch is not needed at runtime — faster-whisper uses ctranslate2,
-        # silero-vad loads via onnxruntime. Excluding saves ~3 GB from the bundle.
         "--exclude-module=torch",
-        "--exclude-module=torchaudio",
-        "--exclude-module=torchvision",
-
-        # ── Hidden imports ────────────────────────────────────────────────
         "--hidden-import=aiohttp",
         "--hidden-import=aiohttp.web",
         "--hidden-import=jarvis.api.local_server",
@@ -220,7 +188,6 @@ def build_exe():
         "--hidden-import=google.auth.transport.requests",
         "--hidden-import=jarvis.voice.desktop_audio",
         "--collect-all=pyaudiowpatch",
-
         str(jarvis_dir / "jarvis" / "__main__.py"),
     ]
 
@@ -252,7 +219,6 @@ def build_exe():
 
 
 def _install_playwright(exe_path) -> None:
-    """Install Playwright Chromium browser so JARVIS can automate the web out of the box."""
     print("[*] Installing Playwright Chromium browser (required for web automation)...")
     try:
         result = subprocess.run(
