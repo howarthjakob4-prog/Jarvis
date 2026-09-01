@@ -12,6 +12,28 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
 os.environ.setdefault("MKL_NUM_THREADS", "2")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "2")
 
+# Windows graphics-driver stability mode.
+# Force Qt / QtWebEngine onto software rendering so a flaky GPU/OpenGL/D3D
+# driver cannot take down the entire JARVIS process (and its local servers).
+os.environ.setdefault("QT_OPENGL", "software")
+os.environ.setdefault("QT_QUICK_BACKEND", "software")
+os.environ.setdefault("QSG_RHI_BACKEND", "software")
+_chromium_flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "").strip()
+_safe_flags = "--disable-gpu --disable-gpu-compositing --disable-gpu-rasterization"
+if _safe_flags not in _chromium_flags:
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (f"{_chromium_flags} {_safe_flags}").strip()
+
+# Preserve a native-crash trace where possible instead of disappearing silently.
+try:
+    import faulthandler
+    from pathlib import Path as _CrashPath
+    _crash_dir = _CrashPath.home() / ".jarvis"
+    _crash_dir.mkdir(parents=True, exist_ok=True)
+    _crash_stream = open(_crash_dir / "native_crash.log", "a", buffering=1, encoding="utf-8")
+    faulthandler.enable(file=_crash_stream, all_threads=True)
+except Exception:
+    _crash_stream = None
+
 # CUDA DLL bootstrap (MUST run before any ctranslate2 / faster_whisper import)
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
     _nvidia_base = os.path.join(sys._MEIPASS, 'nvidia')
