@@ -26,6 +26,7 @@ dependencies = [
     "groq",
     "httpx",
     "loguru",
+    "miniaudio",
     "mss",
     "numpy",
     "ollama",
@@ -33,6 +34,7 @@ dependencies = [
     "pillow",
     "playwright",
     "pydantic>=2.0",
+    "pyttsx3",
     "pywinauto",
     "PyQt6>=6.0",
     "pyautogui",
@@ -67,6 +69,8 @@ voice = [
     "soundfile",
     "torch",
     "edge-tts",
+    "miniaudio",
+    "pyttsx3",
     "numpy",
 ]
 gpu = [
