@@ -3,29 +3,29 @@ import io
 import numpy as np
 import sounddevice as sd
 import soundfile as sf
+import miniaudio
 from loguru import logger
 
 
 def _decode_audio(audio_bytes: bytes) -> tuple[np.ndarray, int]:
+    """Decode edge-tts MP3 first; fall back to soundfile for WAV/local TTS."""
+    if not audio_bytes:
+        raise ValueError("No audio bytes to play")
+
     try:
-        import av
-        container = av.open(io.BytesIO(audio_bytes))
-        stream = container.streams.audio[0]
-        frames = []
-        for frame in container.decode(stream):
-            arr = frame.to_ndarray()
-            if arr.dtype == np.int16:
-                frames.append(arr.astype(np.float32) / 32768.0)
-            else:
-                frames.append(arr.astype(np.float32))
-        container.close()
-        data = np.concatenate(frames, axis=1).T
-        if data.ndim == 2 and data.shape[1] == 1:
-            data = data[:, 0]
-        return data, stream.sample_rate
-    except Exception:
+        decoded = miniaudio.mp3_read_s16(audio_bytes)
+        data = np.frombuffer(decoded.samples.tobytes(), dtype=np.int16)
+        if decoded.nchannels > 1:
+            data = data.reshape(-1, decoded.nchannels)
+        return data.astype(np.float32) / 32768.0, decoded.sample_rate
+    except Exception as mp3_exc:
+        logger.debug(f"MP3 decoder did not accept audio ({mp3_exc}); trying WAV/PCM decoder")
+
+    try:
         data, sr = sf.read(io.BytesIO(audio_bytes), dtype="float32")
         return data, sr
+    except Exception as wav_exc:
+        raise RuntimeError(f"Unable to decode JARVIS voice audio: {wav_exc}") from wav_exc
 
 
 class AudioPlayer:
@@ -41,6 +41,8 @@ class AudioPlayer:
             self.is_playing = True
 
             data, samplerate = await asyncio.to_thread(_decode_audio, audio_bytes)
+            if data.size == 0:
+                raise RuntimeError("Decoded JARVIS voice audio is empty")
 
             await asyncio.to_thread(
                 sd.play, data, samplerate=samplerate, device=self.device, blocking=True
