@@ -3,6 +3,9 @@ from jarvis.plugins.base import Plugin
 from jarvis.models import ToolDefinition
 
 
+DEFAULT_TABLET_PORT = 8766
+
+
 class WebRemotePlugin(Plugin):
     """Tablet-only remote with owner control and read-only AIM demo access."""
 
@@ -10,7 +13,30 @@ class WebRemotePlugin(Plugin):
         super().__init__("web_remote")
 
     async def initialize(self) -> None:
-        logger.info("Tablet remote ready (start it with start_tablet_remote)")
+        """Start tablet access automatically once the JARVIS runtime is available.
+
+        The desktop Local API uses port 8765 by default, so the tablet bridge uses
+        its own port to avoid the two servers fighting over the same socket.
+        """
+        try:
+            from jarvis.control.web_remote import get_web_remote_server
+
+            server = get_web_remote_server()
+            if not server.is_running():
+                server.port = DEFAULT_TABLET_PORT
+
+            if server.start():
+                logger.info(
+                    "JARVIS tablet remote started automatically at {}",
+                    server.url(),
+                )
+            else:
+                logger.warning(
+                    "JARVIS tablet remote could not start automatically on port {}",
+                    server.port,
+                )
+        except Exception as exc:
+            logger.warning(f"JARVIS tablet remote auto-start failed: {exc}")
 
     async def shutdown(self) -> None:
         try:
@@ -34,7 +60,7 @@ class WebRemotePlugin(Plugin):
                         "properties": {
                             "port": {
                                 "type": "integer",
-                                "description": "Optional port (default 8765)",
+                                "description": "Optional port (default 8766)",
                             }
                         },
                     },
@@ -51,7 +77,7 @@ class WebRemotePlugin(Plugin):
                     parameters={
                         "type": "object",
                         "properties": {
-                            "port": {"type": "integer", "description": "Optional port (default 8765)"}
+                            "port": {"type": "integer", "description": "Optional port (default 8766)"}
                         },
                     },
                 ),
@@ -75,7 +101,7 @@ class WebRemotePlugin(Plugin):
             ),
         ]
 
-    async def start_tablet_remote(self, port: int = 8765) -> str:
+    async def start_tablet_remote(self, port: int = DEFAULT_TABLET_PORT) -> str:
         from jarvis.control.web_remote import get_web_remote_server
         server = get_web_remote_server()
         if port and int(port) != server.port and not server.is_running():
@@ -106,4 +132,4 @@ class WebRemotePlugin(Plugin):
                 f"Owner: {server.owner_url()}\n"
                 f"AIM read-only: {server.viewer_url()}"
             )
-        return "Tablet access is not running. Start it with start_tablet_remote."
+        return "Tablet access is not running. It should auto-start with JARVIS; you can also run start_tablet_remote."
