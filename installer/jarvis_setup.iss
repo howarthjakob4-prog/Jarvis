@@ -17,7 +17,7 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
-UninstallDisplayIcon={app}\JARVIS.exe
+UninstallDisplayIcon={app}\jarvis.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -28,11 +28,12 @@ Name: "startupentry"; Description: "Start JARVIS &automatically with Windows (ru
 
 [Files]
 Source: "..\dist\JARVIS\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\jarvis.ico"; DestDir: "{app}"; DestName: "jarvis.ico"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\JARVIS"; Filename: "{app}\JARVIS.exe"; IconFilename: "{app}\JARVIS.exe"
-Name: "{group}\Uninstall JARVIS"; Filename: "{uninstallexe}"
-Name: "{commondesktop}\JARVIS"; Filename: "{app}\JARVIS.exe"; IconFilename: "{app}\JARVIS.exe"; Tasks: desktopicon
+Name: "{group}\JARVIS"; Filename: "{app}\JARVIS.exe"; IconFilename: "{app}\jarvis.ico"; IconIndex: 0
+Name: "{group}\Uninstall JARVIS"; Filename: "{uninstallexe}"; IconFilename: "{app}\jarvis.ico"; IconIndex: 0
+Name: "{commondesktop}\JARVIS"; Filename: "{app}\JARVIS.exe"; IconFilename: "{app}\jarvis.ico"; IconIndex: 0; Tasks: desktopicon
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "JARVIS"; ValueData: """{app}\JARVIS.exe"" --minimized"; Flags: uninsdeletevalue; Tasks: startupentry
