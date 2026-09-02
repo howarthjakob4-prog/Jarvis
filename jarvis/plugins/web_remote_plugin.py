@@ -3,38 +3,42 @@ from jarvis.plugins.base import Plugin
 from jarvis.models import ToolDefinition
 
 
-DEFAULT_TABLET_PORT = 8766
+DEFAULT_PHONE_PORT = 8766
+DEFAULT_TABLET_PORT = 8767
 
 
 class WebRemotePlugin(Plugin):
-    """Tablet-only remote with owner control and read-only AIM demo access."""
+    """Owner phone alerts plus tablet remote access over the local network."""
 
     def __init__(self):
         super().__init__("web_remote")
+        self._phone_gateway = None
 
     async def initialize(self) -> None:
-        """Start tablet access automatically once the JARVIS runtime is available.
+        """Start the owner phone gateway and tablet remote automatically.
 
-        The desktop Local API uses port 8765 by default, so the tablet bridge uses
-        its own port to avoid the two servers fighting over the same socket.
+        The phone gateway owns port 8766 so JARVIS can surface alerts/approval
+        requests on the owner's phone. Tablet command access uses 8767 to avoid
+        fighting the phone gateway for the same socket.
         """
         try:
-            from jarvis.control.web_remote import get_web_remote_server
+            from jarvis.connectors.local_phone_gateway import start_local_phone_gateway
+            self._phone_gateway = start_local_phone_gateway(DEFAULT_PHONE_PORT)
+            logger.info("JARVIS phone notification gateway started automatically on port {}", DEFAULT_PHONE_PORT)
+        except OSError as exc:
+            logger.warning(f"JARVIS phone gateway could not bind port {DEFAULT_PHONE_PORT}: {exc}")
+        except Exception as exc:
+            logger.warning(f"JARVIS phone gateway auto-start failed: {exc}")
 
+        try:
+            from jarvis.control.web_remote import get_web_remote_server
             server = get_web_remote_server()
             if not server.is_running():
                 server.port = DEFAULT_TABLET_PORT
-
             if server.start():
-                logger.info(
-                    "JARVIS tablet remote started automatically at {}",
-                    server.url(),
-                )
+                logger.info("JARVIS tablet remote started automatically at {}", server.url())
             else:
-                logger.warning(
-                    "JARVIS tablet remote could not start automatically on port {}",
-                    server.port,
-                )
+                logger.warning("JARVIS tablet remote could not start automatically on port {}", server.port)
         except Exception as exc:
             logger.warning(f"JARVIS tablet remote auto-start failed: {exc}")
 
@@ -44,24 +48,46 @@ class WebRemotePlugin(Plugin):
             get_web_remote_server().stop()
         except Exception:
             pass
+        try:
+            if self._phone_gateway is not None:
+                self._phone_gateway.shutdown()
+                self._phone_gateway.server_close()
+                self._phone_gateway = None
+        except Exception:
+            pass
 
     def get_tools(self):
         return [
             (
                 ToolDefinition(
+                    name="start_phone_remote",
+                    description=(
+                        "Start or confirm the private JARVIS owner-phone notification gateway. "
+                        "Returns the phone pairing URL used for JARVIS alerts and approvals."
+                    ),
+                    parameters={"type": "object", "properties": {}},
+                ),
+                self.start_phone_remote,
+            ),
+            (
+                ToolDefinition(
+                    name="phone_remote_status",
+                    description="Show the private owner-phone notification/approval URL and gateway status.",
+                    parameters={"type": "object", "properties": {}},
+                ),
+                self.phone_remote_status,
+            ),
+            (
+                ToolDefinition(
                     name="start_tablet_remote",
                     description=(
-                        "Start the JARVIS tablet-only remote. Returns a private owner-control "
-                        "pairing link and a separate read-only AIM demonstration link. "
-                        "Phone access is disabled."
+                        "Start the JARVIS tablet remote. Returns a private owner-control pairing link "
+                        "and a separate read-only AIM demonstration link."
                     ),
                     parameters={
                         "type": "object",
                         "properties": {
-                            "port": {
-                                "type": "integer",
-                                "description": "Optional port (default 8766)",
-                            }
+                            "port": {"type": "integer", "description": "Optional port (default 8767)"}
                         },
                     },
                 ),
@@ -70,14 +96,11 @@ class WebRemotePlugin(Plugin):
             (
                 ToolDefinition(
                     name="start_web_remote",
-                    description=(
-                        "Compatibility alias for start_tablet_remote. The remote is tablet-only; "
-                        "phone browser access is rejected."
-                    ),
+                    description="Compatibility alias for start_tablet_remote.",
                     parameters={
                         "type": "object",
                         "properties": {
-                            "port": {"type": "integer", "description": "Optional port (default 8766)"}
+                            "port": {"type": "integer", "description": "Optional port (default 8767)"}
                         },
                     },
                 ),
@@ -101,6 +124,28 @@ class WebRemotePlugin(Plugin):
             ),
         ]
 
+    async def start_phone_remote(self, **_) -> str:
+        from jarvis.connectors.local_phone_gateway import get_access_url, start_local_phone_gateway
+        try:
+            if self._phone_gateway is None:
+                self._phone_gateway = start_local_phone_gateway(DEFAULT_PHONE_PORT)
+            return (
+                "JARVIS phone notifications are live.\n"
+                f"Owner phone: {get_access_url()}\n"
+                "Open that private link on the phone, tap Enable ringing, and allow browser notifications. "
+                "Keep the link private."
+            )
+        except Exception as exc:
+            return f"JARVIS phone notification gateway could not start: {exc}"
+
+    async def phone_remote_status(self, **_) -> str:
+        from jarvis.connectors.local_phone_gateway import get_access_url
+        running = self._phone_gateway is not None
+        return (
+            f"JARVIS phone gateway is {'running' if running else 'not confirmed running'}.\n"
+            f"Owner phone: {get_access_url()}"
+        )
+
     async def start_tablet_remote(self, port: int = DEFAULT_TABLET_PORT) -> str:
         from jarvis.control.web_remote import get_web_remote_server
         server = get_web_remote_server()
@@ -113,8 +158,7 @@ class WebRemotePlugin(Plugin):
                 f"  {server.owner_url()}\n\n"
                 "AIM DEMONSTRATION TABLET — read-only viewing:\n"
                 f"  {server.viewer_url()}\n\n"
-                "Phone browser access is disabled. Keep the owner link private. "
-                "Stopping tablet access invalidates both links."
+                "Keep the owner link private. Stopping tablet access invalidates both links."
             )
         return "Could not start tablet access (runtime not ready or port in use)."
 
