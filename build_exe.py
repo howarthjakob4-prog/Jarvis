@@ -181,6 +181,7 @@ def build_exe():
         "--hidden-import=jarvis.brain.workflow_engine",
         "--hidden-import=jarvis.control.screen_reader",
         "--hidden-import=jarvis.plugins.scheduler_plugin",
+        "--hidden-import=jarvis.plugins.stable_fast_3d_plugin",
         "--hidden-import=jarvis.ui.ollama_manager",
         "--hidden-import=jarvis.utils.llamacpp_launcher",
         "--hidden-import=jarvis.utils.llamacpp_benchmark",
