@@ -56,18 +56,33 @@ class WebRemotePlugin(Plugin):
         except Exception:
             pass
 
+    def _phone_pair_tool(self, name: str, description: str):
+        return (
+            ToolDefinition(
+                name=name,
+                description=description,
+                parameters={"type": "object", "properties": {}},
+            ),
+            self.start_phone_remote,
+        )
+
     def get_tools(self):
         return [
-            (
-                ToolDefinition(
-                    name="start_phone_remote",
-                    description=(
-                        "Start or confirm the private JARVIS owner-phone notification gateway. "
-                        "Returns the phone pairing URL used for JARVIS alerts and approvals."
-                    ),
-                    parameters={"type": "object", "properties": {}},
-                ),
-                self.start_phone_remote,
+            self._phone_pair_tool(
+                "start_phone_remote",
+                "Start or confirm the private JARVIS owner-phone notification gateway and return the phone pairing URL.",
+            ),
+            self._phone_pair_tool(
+                "link_my_phone",
+                "Use when the owner says 'link my phone' or asks JARVIS to link the phone. Starts phone pairing and returns the private pairing URL.",
+            ),
+            self._phone_pair_tool(
+                "connect_my_phone",
+                "Use when the owner says 'connect my phone' or asks JARVIS to connect the phone. Starts phone pairing and returns the private pairing URL.",
+            ),
+            self._phone_pair_tool(
+                "pair_my_phone",
+                "Use when the owner says 'pair my phone' or asks JARVIS to pair the phone. Starts phone pairing and returns the private pairing URL.",
             ),
             (
                 ToolDefinition(
