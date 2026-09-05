@@ -1,7 +1,7 @@
 [Setup]
 AppId={{A8F32D1C-48C9-4F43-9C8E-4A4C28E8C1A7}
 AppName=JARVIS
-AppVersion=1.0.1
+AppVersion=1.0.2
 AppPublisher=MrClipperz
 AppPublisherURL=https://github.com/howarthjakob4-prog/Jarvis
 AppSupportURL=https://github.com/howarthjakob4-prog/Jarvis/issues
@@ -31,6 +31,14 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"
 Name: "startupentry"; Description: "Start JARVIS &automatically with Windows (runs minimized)"; GroupDescription: "Startup:"; Flags: unchecked
 
+[InstallDelete]
+; Repair an existing installation instead of creating a second copy. PyInstaller's
+; _internal folder contains bundled DLL/PYD/runtime files; stale files left behind by
+; older builds can make JARVIS crash before the window appears. Remove only that
+; generated runtime folder, then the [Files] section recreates it from the new build.
+; User settings/profile data in %APPDATA%\JARVIS is not touched.
+Type: filesandordirs; Name: "{app}\_internal"
+
 [Files]
 ; Patch the existing program files in place. User profile/configuration lives outside
 ; {app} in %APPDATA%\JARVIS and is deliberately not touched by this installer.
@@ -52,6 +60,6 @@ Filename: "{app}\JARVIS.exe"; Description: "Launch updated JARVIS now"; Flags: n
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then begin
-    // This is an in-place patch. Do not reset or recreate the JARVIS user profile.
+    // This is an in-place repair/update. Keep the existing JARVIS user profile.
   end;
 end;
