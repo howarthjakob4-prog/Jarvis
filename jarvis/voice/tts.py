@@ -3,10 +3,13 @@ import io
 import json
 import os
 import tempfile
+import threading
+import urllib.request
 from pathlib import Path
 
 from loguru import logger
 import edge_tts
+import soundfile as sf
 
 try:
     import pyttsx3
@@ -14,18 +17,40 @@ try:
 except ImportError:
     _PYTTSX3_AVAILABLE = False
 
+try:
+    from kokoro_onnx import Kokoro
+    _KOKORO_AVAILABLE = True
+except ImportError:
+    Kokoro = None
+    _KOKORO_AVAILABLE = False
 
-DEFAULT_JARVIS_VOICE = "en-GB-RyanNeural"
+
+DEFAULT_JARVIS_VOICE = "kokoro:bm_george"
+EDGE_FALLBACK_VOICE = "en-GB-RyanNeural"
 DEFAULT_RATE = "+5%"
 DEFAULT_PITCH = "+0Hz"
+
+_KOKORO_MODEL_URL = (
+    "https://github.com/thewh1teagle/kokoro-onnx/releases/download/"
+    "model-files-v1.0/kokoro-v1.0.int8.onnx"
+)
+_KOKORO_VOICES_URL = (
+    "https://github.com/thewh1teagle/kokoro-onnx/releases/download/"
+    "model-files-v1.0/voices-v1.0.bin"
+)
+_KOKORO_MODEL_FILE = "kokoro-v1.0.int8.onnx"
+_KOKORO_VOICES_FILE = "voices-v1.0.bin"
+_KOKORO_LANG = "en-gb"
+_LEGACY_DEFAULT_VOICES = {"en-GB-RyanNeural"}
 
 
 class VoiceBox:
     """Built-in JARVIS voice box.
 
-    The voice box always starts with a usable male JARVIS voice, remembers the
-    selected voice between launches, and falls back to the local Windows speech
-    engine when online synthesis is unavailable.
+    JARVIS prefers the local Kokoro British male voice ``bm_george``. The
+    quantized model is downloaded once into the user's JARVIS profile on first
+    use. If Kokoro is unavailable, speech falls back to Microsoft Edge TTS and
+    then to the local Windows speech engine.
     """
 
     def __init__(
@@ -36,19 +61,38 @@ class VoiceBox:
     ):
         self._settings_path = self._get_settings_path()
         saved = self._load_settings()
-        self.voice = saved.get("voice") or voice or DEFAULT_JARVIS_VOICE
+        saved_voice = saved.get("voice")
+
+        # Migrate the old built-in Ryan voice to the new local George voice,
+        # while preserving any genuinely custom voice selected by the user.
+        if voice == DEFAULT_JARVIS_VOICE and saved_voice in _LEGACY_DEFAULT_VOICES:
+            saved_voice = None
+
+        self.voice = saved_voice or voice or DEFAULT_JARVIS_VOICE
         self.rate = saved.get("rate") or rate or DEFAULT_RATE
         self.pitch = saved.get("pitch") or pitch or DEFAULT_PITCH
         self.ready = True
         self.last_engine = "not-tested"
+        self._kokoro = None
+        self._kokoro_lock = threading.Lock()
         self._save_settings()
         logger.info(f"JARVIS voice box loaded: {self.voice}")
 
     @staticmethod
-    def _get_settings_path() -> Path:
+    def _get_profile_dir() -> Path:
         base = Path(os.getenv("APPDATA") or Path.home()) / "JARVIS"
         base.mkdir(parents=True, exist_ok=True)
-        return base / "voice_box.json"
+        return base
+
+    @classmethod
+    def _get_settings_path(cls) -> Path:
+        return cls._get_profile_dir() / "voice_box.json"
+
+    @classmethod
+    def _get_kokoro_dir(cls) -> Path:
+        path = cls._get_profile_dir() / "voices" / "kokoro"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
     def _load_settings(self) -> dict:
         try:
@@ -92,14 +136,92 @@ class VoiceBox:
         }
 
     async def test_voice(self, text: str = "JARVIS voice box online. Systems ready.") -> bytes:
-        """Generate a short voice-box test clip for the normal audio player."""
         return await self.synthesize(text)
 
+    @staticmethod
+    def _download_file(url: str, destination: Path) -> None:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = destination.with_suffix(destination.suffix + ".part")
+        logger.info(f"Downloading JARVIS voice asset: {destination.name}")
+        request = urllib.request.Request(url, headers={"User-Agent": "JARVIS/1.0"})
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response, open(temp_path, "wb") as out:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+            if temp_path.stat().st_size == 0:
+                raise RuntimeError(f"Downloaded empty voice asset: {destination.name}")
+            temp_path.replace(destination)
+        finally:
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
+
+    def _ensure_kokoro_assets(self) -> tuple[Path, Path]:
+        voice_dir = self._get_kokoro_dir()
+        model_path = voice_dir / _KOKORO_MODEL_FILE
+        voices_path = voice_dir / _KOKORO_VOICES_FILE
+        if not model_path.exists():
+            self._download_file(_KOKORO_MODEL_URL, model_path)
+        if not voices_path.exists():
+            self._download_file(_KOKORO_VOICES_URL, voices_path)
+        return model_path, voices_path
+
+    def _get_kokoro(self):
+        if not _KOKORO_AVAILABLE or Kokoro is None:
+            raise RuntimeError("kokoro-onnx is not installed")
+        if self._kokoro is not None:
+            return self._kokoro
+        with self._kokoro_lock:
+            if self._kokoro is None:
+                model_path, voices_path = self._ensure_kokoro_assets()
+                logger.info("Loading local Kokoro JARVIS voice model")
+                self._kokoro = Kokoro(str(model_path), str(voices_path))
+        return self._kokoro
+
+    @staticmethod
+    def _rate_to_speed(rate: str) -> float:
+        try:
+            clean = str(rate).strip().replace("%", "")
+            percent = float(clean)
+            return max(0.65, min(1.45, 1.0 + (percent / 100.0)))
+        except Exception:
+            return 1.0
+
+    def _synthesize_kokoro_sync(self, text: str) -> bytes:
+        kokoro = self._get_kokoro()
+        voice_id = self.voice.split(":", 1)[1] if ":" in self.voice else "bm_george"
+        speed = self._rate_to_speed(self.rate)
+        samples, sample_rate = kokoro.create(
+            text,
+            voice=voice_id,
+            speed=speed,
+            lang=_KOKORO_LANG,
+        )
+        if samples is None or len(samples) == 0:
+            raise RuntimeError("Kokoro produced no audio")
+        buffer = io.BytesIO()
+        sf.write(buffer, samples, sample_rate, format="WAV", subtype="PCM_16")
+        data = buffer.getvalue()
+        if not data:
+            raise RuntimeError("Kokoro produced an empty WAV")
+        self.last_engine = "kokoro-onnx"
+        self.ready = True
+        return data
+
+    async def _synthesize_kokoro(self, text: str) -> bytes:
+        return await asyncio.to_thread(self._synthesize_kokoro_sync, text)
+
     async def _synthesize_edge_once(self, text: str) -> bytes:
+        edge_voice = self.voice if not self.voice.startswith("kokoro:") else EDGE_FALLBACK_VOICE
         audio_buffer = io.BytesIO()
         communicate = edge_tts.Communicate(
             text=text,
-            voice=self.voice,
+            voice=edge_voice,
             rate=self.rate,
             pitch=self.pitch,
         )
@@ -115,7 +237,7 @@ class VoiceBox:
         self.ready = True
         return data
 
-    async def _synthesize_edge_with_retry(self, text: str, attempts: int = 3) -> bytes:
+    async def _synthesize_edge_with_retry(self, text: str, attempts: int = 2) -> bytes:
         last_error: Exception | None = None
         for attempt in range(1, attempts + 1):
             try:
@@ -134,6 +256,14 @@ class VoiceBox:
         text = text.strip()
         if not text:
             return
+
+        if self.voice.startswith("kokoro:"):
+            try:
+                data = await self._synthesize_kokoro(text)
+                yield data
+                return
+            except Exception as exc:
+                logger.warning(f"Local Kokoro JARVIS voice failed ({exc}); trying online fallback")
 
         try:
             data = await self._synthesize_edge_with_retry(text)
@@ -169,7 +299,6 @@ class VoiceBox:
             def _run() -> bytes:
                 engine = pyttsx3.init()
                 voices = engine.getProperty("voices") or []
-                # Prefer a male Windows voice when Windows exposes gender metadata.
                 for candidate in voices:
                     gender = str(getattr(candidate, "gender", "")).lower()
                     name = str(getattr(candidate, "name", "")).lower()
@@ -202,21 +331,16 @@ class VoiceBox:
             return None
 
     async def get_available_voices(self) -> list[str]:
+        names = [DEFAULT_JARVIS_VOICE]
         try:
             voices = await edge_tts.list_voices()
-            names = [v["Name"] for v in voices if v.get("Name")]
-            if DEFAULT_JARVIS_VOICE not in names:
-                names.insert(0, DEFAULT_JARVIS_VOICE)
-            return names
+            names.extend(v["Name"] for v in voices if v.get("Name"))
         except Exception as exc:
             logger.warning(f"Could not load online voice list: {exc}")
-            return [DEFAULT_JARVIS_VOICE]
+        return list(dict.fromkeys(names))
 
 
 class TTS(VoiceBox):
-    """Backward-compatible name used by the rest of JARVIS.
-
-    Existing code can keep constructing TTS; it now receives the built-in VoiceBox.
-    """
+    """Backward-compatible name used by the rest of JARVIS."""
 
     pass
