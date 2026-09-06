@@ -19,7 +19,8 @@ env/
 
 # Runtime data — generated at runtime, not source
 data/
-docs/
+docs/*
+!docs/NOVA_FRONTIER_3D.md
 
 # Installer output
 installer/*.exe
