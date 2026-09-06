@@ -1,51 +1,40 @@
-"""Validated convex profile helpers for editable extruded design parts."""
-from __future__ import annotations
-
+"""Validated convex profiles for extruded, editable concept parts."""
 import math
 
 
-def validate_profile(profile):
-    if not isinstance(profile, (list, tuple)) or not 3 <= len(profile) <= 32:
-        raise ValueError("A prism profile needs 3-32 points")
-    clean = []
-    for point in profile:
+def validate_profile(value):
+    if not isinstance(value, (list, tuple)) or not 3 <= len(value) <= 32:
+        raise ValueError("A prism profile needs 3–32 convex XZ points")
+    points = []
+    for point in value:
         if not isinstance(point, (list, tuple)) or len(point) != 2:
-            raise ValueError("Profile points must contain X and Z")
-        x, z = float(point[0]), float(point[1])
-        if not math.isfinite(x) or not math.isfinite(z) or abs(x) > 1 or abs(z) > 1:
-            raise ValueError("Profile points must be finite and normalized to [-1, 1]")
-        clean.append([x, z])
-    area = sum(clean[i][0] * clean[(i + 1) % len(clean)][1] - clean[(i + 1) % len(clean)][0] * clean[i][1] for i in range(len(clean))) / 2
-    if abs(area) < 1e-6:
-        raise ValueError("Profile must have area")
-    if area < 0:
-        clean.reverse()
-    sign = None
-    for i in range(len(clean)):
-        a, b, c = clean[i - 1], clean[i], clean[(i + 1) % len(clean)]
-        cross = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])
-        if abs(cross) < 1e-8:
-            continue
-        current = 1 if cross > 0 else -1
-        if sign is not None and current != sign:
-            raise ValueError("Prism profiles must be convex")
-        sign = current
-    return clean
+            raise ValueError("Each profile point needs X and Z")
+        pair = [float(v) for v in point]
+        if any(not math.isfinite(v) or abs(v) > 1 for v in pair):
+            raise ValueError("Profile coordinates must be finite and between -1 and 1")
+        points.append(pair)
+    if len({tuple(p) for p in points}) != len(points):
+        raise ValueError("Profile points must be distinct")
+    signs = []
+    for i, a in enumerate(points):
+        b = points[(i+1) % len(points)]
+        for j, c in enumerate(points):
+            if j in (i, (i+1) % len(points)):
+                continue
+            cross = (b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])
+            if abs(cross) < 1e-10:
+                raise ValueError("Profile must be strictly convex")
+            signs.append(cross > 0)
+    if not all(s == signs[0] for s in signs):
+        raise ValueError("Profile must be convex and cannot cross itself")
+    return points if signs[0] else list(reversed(points))
 
 
-def prism_mesh(profile, position, size, rotation_y=0.0):
-    profile = validate_profile(profile)
-    angle = math.radians(float(rotation_y))
-    ca, sa = math.cos(angle), math.sin(angle)
-    vertices = []
-    for y in (-0.5, 0.5):
-        for x, z in profile:
-            px, pz = x * size[0] * 0.5, z * size[2] * 0.5
-            rx, rz = px * ca - pz * sa, px * sa + pz * ca
-            vertices.append((rx + position[0], y * size[1] + position[1], rz + position[2]))
-    n = len(profile)
-    faces = [tuple(range(n - 1, -1, -1)), tuple(range(n, 2 * n))]
-    for i in range(n):
-        j = (i + 1) % n
-        faces.append((i, j, n + j, n + i))
+def prism_mesh(profile):
+    points = validate_profile(profile)
+    n = len(points)
+    vertices = [(x,y,z) for y in (-.5,.5) for x,z in points]
+    faces = [(0,i,i+1) for i in range(1,n-1)]
+    faces += [(n,n+i+1,n+i) for i in range(1,n-1)]
+    faces += [(i,i+n,(i+1)%n+n,(i+1)%n) for i in range(n)]
     return vertices, faces
