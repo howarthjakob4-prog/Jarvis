@@ -43,10 +43,11 @@ jobs:
         run: |
           python build_exe.py --installer
 
-      - name: Verify installer exists
+      - name: Verify installer and Kokoro runtime data
         shell: pwsh
         run: |
           if (!(Test-Path 'installer/JARVIS-Setup-v1.exe')) { throw 'JARVIS installer was not created' }
+          if (!(Test-Path 'dist/JARVIS/_internal/kokoro_onnx/config.json')) { throw 'Kokoro config.json is missing from packaged JARVIS runtime' }
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
@@ -63,4 +64,4 @@ jobs:
         run: |
           gh release delete jarvis-windows-latest --yes --cleanup-tag 2>$null
           if ($LASTEXITCODE -ne 0) { $global:LASTEXITCODE = 0 }
-          gh release create jarvis-windows-latest installer/JARVIS-Setup-v1.exe --title "JARVIS Windows Installer" --notes "JARVIS 1.0.3 adds the local Kokoro bm_george British male voice with Edge/Windows fallbacks. The Kokoro model downloads on first voice use. This build passed the Jarvis pre-build Python and integration scan." --latest
+          gh release create jarvis-windows-latest installer/JARVIS-Setup-v1.exe --title "JARVIS Windows Installer" --notes "JARVIS 1.0.3 hotfix bundles the Kokoro runtime configuration required by the bm_george voice. The Kokoro model downloads on first voice use. This build passed the Jarvis pre-build and packaged-runtime checks." --latest
