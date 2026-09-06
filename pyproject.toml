@@ -8,7 +8,7 @@ include = ["jarvis*"]
 
 [project]
 name = "jarvis"
-version = "1.0.4"
+version = "1.0.5"
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=0.50.0",
