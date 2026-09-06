@@ -37,7 +37,7 @@ jobs:
         run: |
           python -m compileall -q jarvis stage1 tests tools
           python -c "from jarvis.brain import project_workspace; from jarvis.plugins.project_workspace_plugin import ProjectWorkspacePlugin; tools = ProjectWorkspacePlugin().get_tools(); assert len(tools) >= 7; print(f'Project workspace integration OK: {len(tools)} tools')"
-          python -c "from jarvis.brain.design_engine import preset, obj_text; s=preset('achilles'); assert len(s['objects']) > 100; assert obj_text(s).startswith('# Nova Frontier'); print(f'3D design engine OK: {len(s[\"objects\"])} Achilles parts')"
+          python -c "from jarvis.brain.design_engine import preset, obj_text; s=preset('achilles'); assert len(s['objects']) > 100; assert obj_text(s).startswith('# Nova Frontier'); print('3D design engine OK:', len(s['objects']), 'Achilles parts')"
           python -m unittest tests.test_design_engine tests.test_design_reference tests.test_design_renderer tests.test_design_workspace
           python -c "from jarvis.voice.tts import DEFAULT_JARVIS_VOICE, TTS; assert DEFAULT_JARVIS_VOICE == 'kokoro:bm_george'; box=TTS(); assert box.status()['voice']; print('Kokoro George voice integration OK')"
           python -m pip check
