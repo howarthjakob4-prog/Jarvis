@@ -27,6 +27,30 @@ class ListenThread(QThread):
         self.finished_with_text.emit(text or "")
 
 
+class DispatchThread(QThread):
+    """Runs command/AI routing off the GUI thread."""
+    finished_with_result = Signal(object, bool)
+    failed = Signal(object)
+
+    def __init__(self, text: str, speak_reply: bool):
+        super().__init__()
+        self._text = text
+        self._speak_reply = speak_reply
+
+    def run(self) -> None:
+        try:
+            from brain.command_router import route
+            result = route(self._text)
+            self.finished_with_result.emit(result, self._speak_reply)
+        except JarvisError as exc:
+            self.failed.emit(exc)
+        except Exception as exc:
+            self.failed.emit(JarvisError(
+                module="command_router",
+                message=f"Command processing failed: {exc}",
+            ))
+
+
 class MainWindow(QMainWindow):
     voice_transcript_signal = Signal(str)
     jarvis_error_signal = Signal(object)
@@ -35,10 +59,25 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Jarvis")
         self.resize(760, 640)
+
+        # Subscribe before voice initialization so startup failures are not lost.
+        self._startup_errors: list[JarvisError] = []
+        self._ui_ready = False
+        self.jarvis_error_signal.connect(self._on_jarvis_error)
+        error_bus.subscribe(self._forward_error)
+
         self.voice_controller = VoiceController()
         self._listen_thread: ListenThread | None = None
+        self._dispatch_threads: set[DispatchThread] = set()
+        self._resume_wake_after_manual = False
+
         self._build_ui()
         self._wire_events()
+        self._ui_ready = True
+        for startup_error in self._startup_errors:
+            self.jarvis_error_signal.emit(startup_error)
+        self._startup_errors.clear()
+
         if settings.get("features", "wake_word", default=True):
             self.voice_controller.start_wake_word()
             if self.voice_controller.wake_word_active:
@@ -47,6 +86,12 @@ class MainWindow(QMainWindow):
                 self._set_status("Wake word unavailable — use the mic button.", "error")
         else:
             self._set_status("Ready.", "ok")
+
+    def _forward_error(self, error: JarvisError) -> None:
+        if not self._ui_ready:
+            self._startup_errors.append(error)
+            return
+        self.jarvis_error_signal.emit(error)
 
     def _build_ui(self) -> None:
         central = QWidget()
@@ -81,8 +126,6 @@ class MainWindow(QMainWindow):
 
     def _wire_events(self) -> None:
         self.voice_transcript_signal.connect(self._on_voice_transcript)
-        self.jarvis_error_signal.connect(self._on_jarvis_error)
-        error_bus.subscribe(lambda error: self.jarvis_error_signal.emit(error))
         event_bus.subscribe("user_voice_transcript", lambda text: self.voice_transcript_signal.emit(text))
 
     def _on_text_submitted(self) -> None:
@@ -96,10 +139,23 @@ class MainWindow(QMainWindow):
     def _on_mic_pressed(self) -> None:
         if self._listen_thread and self._listen_thread.isRunning():
             return
+
+        # Many Windows audio drivers reject two simultaneous input streams.
+        # Pause wake-word capture while manual recording owns the microphone.
+        self._resume_wake_after_manual = self.voice_controller.wake_word_active
+        if self._resume_wake_after_manual:
+            self.voice_controller.stop_wake_word()
+
         self._set_status("Listening...", "ok")
         self._listen_thread = ListenThread(self.voice_controller)
-        self._listen_thread.finished_with_text.connect(self._on_mic_result)
+        self._listen_thread.finished_with_text.connect(self._on_manual_listen_finished)
         self._listen_thread.start()
+
+    def _on_manual_listen_finished(self, text: str) -> None:
+        if self._resume_wake_after_manual and settings.get("features", "wake_word", default=True):
+            self.voice_controller.start_wake_word()
+        self._resume_wake_after_manual = False
+        self._on_mic_result(text)
 
     def _on_mic_result(self, text: str) -> None:
         if not text:
@@ -115,11 +171,22 @@ class MainWindow(QMainWindow):
         self._dispatch(text, speak_reply=True)
 
     def _dispatch(self, text: str, speak_reply: bool) -> None:
-        from brain.command_router import route
-        result = route(text)
+        self._set_status("Working...", "ok")
+        worker = DispatchThread(text, speak_reply)
+        self._dispatch_threads.add(worker)
+        worker.finished_with_result.connect(self._on_dispatch_result)
+        worker.failed.connect(self._on_dispatch_error)
+        worker.finished.connect(lambda w=worker: self._dispatch_threads.discard(w))
+        worker.start()
+
+    def _on_dispatch_result(self, result, speak_reply: bool) -> None:
         self._append_chat("Jarvis", result.text)
         if speak_reply and result.should_speak:
             self.voice_controller.speak(result.text)
+        self._set_status("Ready.", "ok")
+
+    def _on_dispatch_error(self, error: JarvisError) -> None:
+        error_bus.report(error)
         self._set_status("Ready.", "ok")
 
     def _on_jarvis_error(self, error: JarvisError) -> None:
@@ -144,4 +211,15 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self.voice_controller.stop_wake_word()
+
+        # Do not let Qt destroy a running QThread during app teardown.
+        if self._listen_thread and self._listen_thread.isRunning():
+            self._listen_thread.requestInterruption()
+            self._listen_thread.wait(6500)
+
+        for worker in list(self._dispatch_threads):
+            if worker.isRunning():
+                worker.requestInterruption()
+                worker.wait(1000)
+
         super().closeEvent(event)
