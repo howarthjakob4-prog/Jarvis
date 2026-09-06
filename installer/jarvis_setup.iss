@@ -1,7 +1,7 @@
 [Setup]
 AppId={{A8F32D1C-48C9-4F43-9C8E-4A4C28E8C1A7}
 AppName=JARVIS
-AppVersion=1.0.3
+AppVersion=1.0.4
 AppPublisher=MrClipperz
 AppPublisherURL=https://github.com/howarthjakob4-prog/Jarvis
 AppSupportURL=https://github.com/howarthjakob4-prog/Jarvis/issues
@@ -13,7 +13,7 @@ UsePreviousGroup=yes
 AllowNoIcons=yes
 LicenseFile=..\LICENSE
 OutputDir=.
-OutputBaseFilename=JARVIS-Setup-v1
+OutputBaseFilename=JARVIS-Setup-v1.0.4
 SetupIconFile=..\jarvis.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -54,7 +54,7 @@ Name: "{commondesktop}\JARVIS"; Filename: "{app}\JARVIS.exe"; IconFilename: "{ap
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "JARVIS"; ValueData: """{app}\JARVIS.exe"" --minimized"; Flags: uninsdeletevalue; Tasks: startupentry
 
 [Run]
-Filename: "{app}\JARVIS.exe"; Description: "Launch updated JARVIS now"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\JARVIS.exe"; Description: "Launch updated JARVIS 1.0.4 now"; Flags: nowait postinstall skipifsilent
 
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);
