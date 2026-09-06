@@ -35,6 +35,7 @@ jobs:
         run: |
           python -m compileall -q jarvis stage1
           python -c "from jarvis.brain import project_workspace; from jarvis.plugins.project_workspace_plugin import ProjectWorkspacePlugin; tools = ProjectWorkspacePlugin().get_tools(); assert len(tools) >= 7; print(f'Project workspace integration OK: {len(tools)} tools')"
+          python -c "from jarvis.voice.tts import DEFAULT_JARVIS_VOICE, TTS; assert DEFAULT_JARVIS_VOICE == 'kokoro:bm_george'; box=TTS(); assert box.status()['voice']; print('Kokoro George voice integration OK')"
           python -m pip check
 
       - name: Build JARVIS installer
@@ -62,4 +63,4 @@ jobs:
         run: |
           gh release delete jarvis-windows-latest --yes --cleanup-tag 2>$null
           if ($LASTEXITCODE -ne 0) { $global:LASTEXITCODE = 0 }
-          gh release create jarvis-windows-latest installer/JARVIS-Setup-v1.exe --title "JARVIS Windows Installer" --notes "Low-storage Windows installer. Browser automation components are optional and are not downloaded during setup. This build passed the Jarvis pre-build Python and integration scan." --latest
+          gh release create jarvis-windows-latest installer/JARVIS-Setup-v1.exe --title "JARVIS Windows Installer" --notes "JARVIS 1.0.3 adds the local Kokoro bm_george British male voice with Edge/Windows fallbacks. The Kokoro model downloads on first voice use. This build passed the Jarvis pre-build Python and integration scan." --latest
