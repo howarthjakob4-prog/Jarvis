@@ -36,29 +36,32 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           python -m compileall -q jarvis stage1 tests tools
+          python -c "import importlib.metadata as m; assert m.version('jarvis') == '1.0.4'; print('Package version OK:', m.version('jarvis'))"
           python -c "from jarvis.brain import project_workspace; from jarvis.plugins.project_workspace_plugin import ProjectWorkspacePlugin; tools = ProjectWorkspacePlugin().get_tools(); assert len(tools) >= 7; print(f'Project workspace integration OK: {len(tools)} tools')"
           python -c "from jarvis.brain.design_engine import preset, obj_text; s=preset('achilles'); assert len(s['objects']) > 100; assert obj_text(s).startswith('# Nova Frontier'); print('3D design engine OK:', len(s['objects']), 'Achilles parts')"
           python -m unittest tests.test_design_engine tests.test_design_reference tests.test_design_renderer tests.test_design_workspace
           python -c "from jarvis.voice.tts import DEFAULT_JARVIS_VOICE, TTS; assert DEFAULT_JARVIS_VOICE == 'kokoro:bm_george'; box=TTS(); assert box.status()['voice']; print('Kokoro George voice integration OK')"
           python -m pip check
+          if (-not (Select-String -Path 'installer/jarvis_setup.iss' -Pattern '^AppVersion=1\.0\.4$' -Quiet)) { throw 'Installer AppVersion is not 1.0.4' }
+          if (-not (Select-String -Path 'installer/jarvis_setup.iss' -Pattern '^OutputBaseFilename=JARVIS-Setup-v1\.0\.4$' -Quiet)) { throw 'Installer filename is not versioned as 1.0.4' }
 
       - name: Build JARVIS installer
         shell: pwsh
         run: |
           python build_exe.py --installer
 
-      - name: Verify installer and Kokoro runtime data
+      - name: Verify installer and runtime data
         shell: pwsh
         run: |
-          if (!(Test-Path 'installer/JARVIS-Setup-v1.exe')) { throw 'JARVIS installer was not created' }
+          if (!(Test-Path 'installer/JARVIS-Setup-v1.0.4.exe')) { throw 'JARVIS 1.0.4 installer was not created' }
           if (!(Test-Path 'dist/JARVIS/_internal/kokoro_onnx/config.json')) { throw 'Kokoro config.json is missing from packaged JARVIS runtime' }
           if (!(Test-Path 'dist/JARVIS/_internal/jarvis/ui/design_workspace.py')) { Write-Host '3D workspace packaged through PyInstaller bytecode/import graph' }
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: JARVIS-Windows-Installer
-          path: installer/JARVIS-Setup-v1.exe
+          name: JARVIS-1.0.4-Windows-Installer
+          path: installer/JARVIS-Setup-v1.0.4.exe
           if-no-files-found: error
           retention-days: 14
 
@@ -69,4 +72,4 @@ jobs:
         run: |
           gh release delete jarvis-windows-latest --yes --cleanup-tag 2>$null
           if ($LASTEXITCODE -ne 0) { $global:LASTEXITCODE = 0 }
-          gh release create jarvis-windows-latest installer/JARVIS-Setup-v1.exe --title "JARVIS Windows Installer" --notes "JARVIS 1.0.3 includes the Kokoro bm_george voice hotfix plus the updated Nova Frontier/Jarvis 3D studio, Achilles concept geometry, runtime integration, renderer, and tests." --latest
+          gh release create jarvis-windows-latest installer/JARVIS-Setup-v1.0.4.exe --title "JARVIS 1.0.4 Windows Installer" --notes "JARVIS 1.0.4 fixes the updater/versioning bug and includes the Kokoro bm_george voice hotfix plus the updated Nova Frontier/Jarvis 3D studio, Achilles concept geometry, runtime integration, renderer, and tests." --latest
