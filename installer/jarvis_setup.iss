@@ -1,7 +1,7 @@
 [Setup]
 AppId={{A8F32D1C-48C9-4F43-9C8E-4A4C28E8C1A7}
 AppName=JARVIS
-AppVersion=1.0.2
+AppVersion=1.0.3
 AppPublisher=MrClipperz
 AppPublisherURL=https://github.com/howarthjakob4-prog/Jarvis
 AppSupportURL=https://github.com/howarthjakob4-prog/Jarvis/issues
