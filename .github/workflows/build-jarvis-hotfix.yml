@@ -32,9 +32,13 @@ jobs:
 
       - name: Scan Jarvis for Python and integration bugs
         shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
-          python -m compileall -q jarvis stage1
+          python -m compileall -q jarvis stage1 tests
           python -c "from jarvis.brain import project_workspace; from jarvis.plugins.project_workspace_plugin import ProjectWorkspacePlugin; tools = ProjectWorkspacePlugin().get_tools(); assert len(tools) >= 7; print(f'Project workspace integration OK: {len(tools)} tools')"
+          python -c "from jarvis.brain.design_engine import preset, obj_text; s=preset('spaceship'); assert len(s['objects']) > 0; assert obj_text(s).startswith('# Nova Frontier'); print('3D design engine OK')"
+          python -m unittest tests.test_design_workspace
           python -c "from jarvis.voice.tts import DEFAULT_JARVIS_VOICE, TTS; assert DEFAULT_JARVIS_VOICE == 'kokoro:bm_george'; box=TTS(); assert box.status()['voice']; print('Kokoro George voice integration OK')"
           python -m pip check
 
@@ -48,6 +52,7 @@ jobs:
         run: |
           if (!(Test-Path 'installer/JARVIS-Setup-v1.exe')) { throw 'JARVIS installer was not created' }
           if (!(Test-Path 'dist/JARVIS/_internal/kokoro_onnx/config.json')) { throw 'Kokoro config.json is missing from packaged JARVIS runtime' }
+          if (!(Test-Path 'dist/JARVIS/_internal/jarvis/ui/design_workspace.py')) { Write-Host '3D workspace packaged through PyInstaller bytecode/import graph' }
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
@@ -64,4 +69,4 @@ jobs:
         run: |
           gh release delete jarvis-windows-latest --yes --cleanup-tag 2>$null
           if ($LASTEXITCODE -ne 0) { $global:LASTEXITCODE = 0 }
-          gh release create jarvis-windows-latest installer/JARVIS-Setup-v1.exe --title "JARVIS Windows Installer" --notes "JARVIS 1.0.3 hotfix bundles the Kokoro runtime configuration required by the bm_george voice. The Kokoro model downloads on first voice use. This build passed the Jarvis pre-build and packaged-runtime checks." --latest
+          gh release create jarvis-windows-latest installer/JARVIS-Setup-v1.exe --title "JARVIS Windows Installer" --notes "JARVIS 1.0.3 includes the Kokoro bm_george voice hotfix plus the Nova Frontier/Jarvis 3D concept workspace and integration tests." --latest
