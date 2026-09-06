@@ -1,0 +1,19 @@
+QWidget {
+    background-color: #1b1e24;
+    color: #e6e8ec;
+    font-family: "Segoe UI", sans-serif;
+    font-size: 13px;
+}
+QMainWindow { background-color: #1b1e24; }
+QTextEdit#chatLog { background-color: #14161b; border: 1px solid #2a2e37; border-radius: 8px; padding: 10px; }
+QLineEdit#chatInput { background-color: #22262e; border: 1px solid #2a2e37; border-radius: 6px; padding: 8px; }
+QPushButton { background-color: #2a2e37; border: none; border-radius: 6px; padding: 8px 14px; }
+QPushButton:hover { background-color: #363c47; }
+QPushButton:pressed { background-color: #454c59; }
+QPushButton#micButton { background-color: #3a5f8a; }
+QPushButton#micButton:hover { background-color: #4a76a8; }
+QLabel#statusLabel { color: #9aa2ad; padding: 4px 8px; }
+QLabel#statusLabel[state="error"] { color: #e0665a; }
+QLabel#statusLabel[state="ok"] { color: #6fcf97; }
+QTabWidget::pane { border: 1px solid #2a2e37; border-radius: 6px; }
+QListWidget { background-color: #14161b; border: 1px solid #2a2e37; border-radius: 6px; }

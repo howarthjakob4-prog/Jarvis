@@ -1,0 +1,30 @@
+{
+  "voice": {
+    "enabled": true,
+    "tts_backend": "pyttsx3",
+    "tts_rate": 185,
+    "tts_voice_id": null,
+    "piper_model_path": null,
+    "stt_model_size": "base.en",
+    "input_device_index": null,
+    "wake_word_enabled": true,
+    "wake_word_model": "hey_jarvis",
+    "wake_word_sensitivity": 0.5
+  },
+  "features": {
+    "voice_input": true,
+    "voice_output": true,
+    "wake_word": true,
+    "app_launching": true,
+    "ai_backend": false
+  },
+  "ai_backend": {
+    "provider": "anthropic",
+    "api_key_env_var": "ANTHROPIC_API_KEY",
+    "model": "claude-sonnet-4-6"
+  },
+  "ui": {
+    "theme": "dark",
+    "always_on_top": false
+  }
+}
