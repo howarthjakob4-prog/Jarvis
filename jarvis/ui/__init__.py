@@ -1,13 +1,12 @@
 """Jarvis UI package helpers.
 
-The design workspace, local GGUF model loader, and Project Nova command-center
-skin are attached to the normal AdvancedChatWindow when that window class is
-loaded. Keeping the hooks here avoids a second application entry point and
-works for both source runs and packaged Windows builds.
+The design workspace, local GGUF model loader, Project Nova command-center skin,
+and dedicated HUD display mode are attached to the normal AdvancedChatWindow.
 """
 from jarvis.ui.design_workspace import DesignWorkspace, DesignController, install_design_workspace
 from jarvis.ui.local_model_loader import install_local_model_loader
 from jarvis.ui.jarvis_command_center import install_command_center
+from jarvis.ui.jarvis_display_mode import install_jarvis_display_mode
 
 
 def _install_design_hook():
@@ -24,6 +23,7 @@ def _install_design_hook():
         install_design_workspace(self, runtime)
         install_local_model_loader(self, runtime)
         install_command_center(self, runtime)
+        install_jarvis_display_mode(self, runtime)
 
     AdvancedChatWindow.__init__ = hooked_init
     AdvancedChatWindow._jarvis_design_hooked = True
@@ -39,4 +39,5 @@ __all__ = [
     "install_design_workspace",
     "install_local_model_loader",
     "install_command_center",
+    "install_jarvis_display_mode",
 ]
