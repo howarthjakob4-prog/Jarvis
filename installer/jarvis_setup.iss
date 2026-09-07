@@ -22,6 +22,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 UninstallDisplayIcon={app}\jarvis.ico
 CloseApplications=yes
+CloseApplicationsFilter=JARVIS.exe
 RestartApplications=no
 
 [Languages]
@@ -57,8 +58,25 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Filename: "{app}\JARVIS.exe"; Description: "Launch updated JARVIS 1.0.5 now"; Flags: nowait postinstall skipifsilent
 
 [Code]
+procedure StopRunningJarvis;
+var
+  ResultCode: Integer;
+begin
+  // A running or tray-minimized JARVIS instance keeps bundled OpenSSL DLLs locked.
+  // Stop it before [InstallDelete] removes _internal so in-place updates do not fail
+  // with Windows error code 5 (Access is denied).
+  Exec(ExpandConstant('{cmd}'),
+    '/C taskkill /F /T /IM JARVIS.exe >nul 2>&1',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(1200);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
+  if CurStep = ssInstall then begin
+    StopRunningJarvis;
+  end;
+
   if CurStep = ssPostInstall then begin
     // This is an in-place repair/update. Keep the existing JARVIS user profile.
   end;
