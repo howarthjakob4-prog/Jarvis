@@ -5,6 +5,7 @@ import time
 from collections import OrderedDict
 from collections.abc import Callable, Awaitable
 from loguru import logger
+from langsmith import traceable
 from jarvis.brain.provider import LLMProvider
 from jarvis.models import Message, AIResponse
 
@@ -69,6 +70,7 @@ class ProviderRouter:
         while len(self._response_cache) > _RESPONSE_CACHE_MAX:
             self._response_cache.popitem(last=False)  # evict LRU
 
+    @traceable(name="jarvis.chat", run_type="chain")
     async def chat(
         self,
         messages: list[Message],
@@ -118,8 +120,14 @@ class ProviderRouter:
                             continue
 
                 timeout = _PROVIDER_TIMEOUT.get(provider_name, 60)
+                traced_provider_chat = traceable(
+                    provider.chat,
+                    name=f"jarvis.provider.{provider_name}.chat",
+                    run_type="llm",
+                    metadata={"provider": provider_name, "streaming": False},
+                )
                 response = await asyncio.wait_for(
-                    provider.chat(
+                    traced_provider_chat(
                         messages,
                         tools=tools,
                         system_prompt=system_prompt,
@@ -157,6 +165,7 @@ class ProviderRouter:
             f"Details: {detail}"
         )
 
+    @traceable(name="jarvis.stream_chat", run_type="chain")
     async def stream_chat(
         self,
         messages: list[Message],
@@ -189,8 +198,14 @@ class ProviderRouter:
                             continue
 
                 timeout = _PROVIDER_TIMEOUT.get(provider_name, 60)
+                traced_provider_stream = traceable(
+                    provider.stream_chat,
+                    name=f"jarvis.provider.{provider_name}.stream_chat",
+                    run_type="llm",
+                    metadata={"provider": provider_name, "streaming": True},
+                )
                 response = await asyncio.wait_for(
-                    provider.stream_chat(
+                    traced_provider_stream(
                         messages, tools=tools, system_prompt=system_prompt,
                         temperature=temperature, category=category, on_chunk=on_chunk,
                     ),
