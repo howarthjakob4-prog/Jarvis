@@ -99,6 +99,28 @@ ai:
   temperature: 0.7
 ```
 
+### Optional LangSmith tracing
+
+JARVIS can send assistant and provider timing, errors, and token usage to LangSmith. Tracing is off unless you configure it. Keep the API key on your computer; never add it to GitHub or browser JavaScript.
+
+PowerShell (current window only):
+
+```powershell
+$env:LANGSMITH_TRACING="true"
+$env:LANGSMITH_API_KEY="your-langsmith-api-key"
+$env:LANGSMITH_PROJECT="project-nova-jarvis"
+python -m jarvis
+```
+
+For extra privacy, LangSmith supports hiding captured message content while retaining operational trace data:
+
+```powershell
+$env:LANGSMITH_HIDE_INPUTS="true"
+$env:LANGSMITH_HIDE_OUTPUTS="true"
+```
+
+Without `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY`, JARVIS continues to work normally without sending traces.
+
 ---
 
 ## Keyboard shortcuts
@@ -163,5 +185,4 @@ python build_exe.py
 ---
 
 MIT. Built for [Hack Club Stardance](https://stardance.hackclub.com) by Venkata.M.
-
 
