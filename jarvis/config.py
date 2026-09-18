@@ -27,6 +27,13 @@ DEFAULTS = {
     "weather_city": "",
     # Schedule plugin: user-editable daily plan, relative to project root.
     "schedule_file": "config/schedule.yaml",
+    # Phone link: phone dashboard sees this PC (on/off) and can send commands.
+    # Secrets (server/secret) belong in config/local.yaml, never in git.
+    "phone_link_enabled": False,
+    "phone_link_server": "",
+    "phone_link_secret": "",
+    "phone_link_pc_name": "My PC",
+    "phone_link_interval": 20,  # seconds between check-ins
 }
 
 
