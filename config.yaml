@@ -1,9 +1,12 @@
 # Jarvis-v2 defaults. Secrets go in config/local.yaml (gitignored), never here.
-tts_engine: sapi        # "sapi" (Windows built-in voice) or "fish" (Fish Audio cloud voice)
+tts_engine: sapi        # "sapi" (Windows built-in), "fish" (Fish Audio), or "elevenlabs"
 voice_enabled: true
 fish_api_key: ""
 fish_reference_id: ""
 fish_model: "s2.1-pro-free"
+elevenlabs_api_key: ""          # set in config/local.yaml, not here
+elevenlabs_voice_id: ""         # blank = default voice; your voice ID from elevenlabs.io
+elevenlabs_model: "eleven_multilingual_v2"
 groq_api_key: ""
 groq_model: "llama-3.3-70b-versatile"
 wake_word: false

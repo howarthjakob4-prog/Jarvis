@@ -9,6 +9,7 @@ def run():
 
     groq = input("Groq API key for AI answers (free at console.groq.com, Enter to skip): ").strip()
     fish = input("Fish Audio API key for a cloud voice (Enter to skip): ").strip()
+    eleven = input("ElevenLabs API key for the ElevenLabs voice (Enter to skip): ").strip()
 
     updates = {}
     if groq:
@@ -19,6 +20,13 @@ def run():
         ref = input("Fish Audio voice reference ID (Enter for default): ").strip()
         if ref:
             updates["fish_reference_id"] = ref
+    if eleven:
+        # Saved to config/local.yaml (gitignored) — the key never leaves this PC.
+        updates["elevenlabs_api_key"] = eleven
+        updates["tts_engine"] = "elevenlabs"
+        vid = input("ElevenLabs voice ID (Enter for the default voice): ").strip()
+        if vid:
+            updates["elevenlabs_voice_id"] = vid
     if updates:
         path = save_local(updates)
         print(f"Saved to {path}")

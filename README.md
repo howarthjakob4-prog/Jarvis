@@ -5,7 +5,7 @@ it talks out of the box, it listens, and every button in the window works.
 
 ## What it does today
 
-- **Talks** — Windows built-in voice (SAPI), zero setup. Optional Fish Audio cloud voice.
+- **Talks** — Windows built-in voice (SAPI), zero setup. Optional Fish Audio or ElevenLabs cloud voice (key stored in gitignored `config/local.yaml`).
 - **Listens** — offline speech recognition (Vosk, ~40MB model auto-downloads once).
   Push-to-talk button, or say "hey jarvis" (opt-in via `wake_word: true`).
 - **No mic?** Still runs — type in the box instead. It tells you that's what's happening.
@@ -39,7 +39,7 @@ Everything above works with zero API keys.
 1. Install Python 3.12+ from https://www.python.org/downloads/
    (tick **"Add python.exe to PATH"**).
 2. Unzip this folder anywhere, double-click **JARVIS.bat**.
-3. First run: a setup wizard asks for optional keys (Groq, Fish Audio).
+3. First run: a setup wizard asks for optional keys (Groq, Fish Audio, ElevenLabs).
    Press Enter through all of it — offline mode works fine.
 4. The Jarvis window opens and says "Jarvis online."
 
@@ -51,7 +51,9 @@ They go in `config/local.yaml` (created by the wizard, never committed):
 groq_api_key: "gsk_..."        # AI answers. Free at console.groq.com
 fish_api_key: "..."            # cloud voice
 fish_reference_id: "..."      # your Fish Audio voice
-tts_engine: "fish"            # switch voice from "sapi" to "fish"
+elevenlabs_api_key: "..."     # ElevenLabs cloud voice
+elevenlabs_voice_id: "..."    # your ElevenLabs voice (blank = default)
+tts_engine: "elevenlabs"      # "sapi", "fish", or "elevenlabs"
 ```
 
 ## Project layout
