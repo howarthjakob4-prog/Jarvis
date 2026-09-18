@@ -1,0 +1,8 @@
+# Your daily schedule, read by "what's my schedule today".
+# Edit freely — time is 24-hour HH:MM, event is anything you want.
+# Lines starting with # are ignored. Timers/reminders you set by voice
+# are added automatically on top of this list.
+- time: "09:00"
+  event: "Example: morning standup (delete me)"
+- time: "18:30"
+  event: "Example: gym (delete me)"

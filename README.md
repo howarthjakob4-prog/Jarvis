@@ -1,167 +1,80 @@
-<div align="center">
+# Jarvis-v2
 
-(I tried to write as much of the main code myself but the installers, setup files and all are pretty much ai because Im not really good in that field. I tried to limit my use as much as possible.)
-# JARVIS
+A clean, minimal voice assistant for Windows. A full reset of the old Jarvis:
+it talks out of the box, it listens, and every button in the window works.
 
-Voice assistant for Windows 11. Talks back, controls your desktop, runs real browser automation,, and routes to whatever AI provider you have configured.
+## What it does today
 
-[![Download](https://img.shields.io/badge/Download-v1-8B7CFF?style=for-the-badge&logo=windows)](https://github.com/ONEPUNCHMAN411/Jarvis/releases/latest)
-[![Python](https://img.shields.io/badge/Python%203.12+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-[![MIT](https://img.shields.io/badge/MIT-10B981?style=for-the-badge)](LICENSE)
+- **Talks** — Windows built-in voice (SAPI), zero setup. Optional Fish Audio cloud voice.
+- **Listens** — offline speech recognition (Vosk, ~40MB model auto-downloads once).
+  Push-to-talk button, or say "hey jarvis" (opt-in via `wake_word: true`).
+- **No mic?** Still runs — type in the box instead. It tells you that's what's happening.
+- **Persistent panel** — always-on-top (toggleable), collapsible, with a
+  LISTENING / SPEAKING / IDLE status light, a scrolling "TOP WORLD NEWS TODAY"
+  ticker, live CPU/RAM/disk monitors, and a timestamped activity log.
+- **Time-aware greeting** — "Good morning/afternoon/evening. Jarvis online."
+- **Basic PC control** — open apps ("open notepad"), volume up/down/mute.
+- **News briefing** — "brief me" reads the top 5 headlines (key-free RSS).
+- **Music** — "play <song> on youtube" opens the YouTube search in your browser.
+- **Weather** — "what's the weather in Paris" (key-free Open-Meteo;
+  set a default city with `weather_city` in config.yaml).
+- **Timers & reminders** — "set a timer for 10 minutes",
+  "remind me to take the trash out in 20 minutes". Fires a spoken alert,
+  a log entry, and a popup. "list my timers", "cancel my timers".
+- **Schedule** — "what's my schedule today" reads your timers/reminders plus
+  your own daily plan in `config/schedule.yaml`.
+- **3D model design** — "design a 3D model of a phone stand" builds a
+  printable mesh and saves STL + OBJ into the `designs/` folder.
+  Catalog: phone stand, desk tray, vase, gear (say teeth/diameter),
+  keychain, and custom boxes ("a box 10 by 5 by 2 cm").
+  "show the design" opens the latest file.
+- **9 plugins** — time/date, open apps, volume, news, music, weather,
+  timers, schedule, 3D design. Adding one is a single small file.
+- **AI answers (optional)** — Groq key for anything beyond the offline skills. Free tier, no card.
 
-![JARVIS preview](assets/preview.png)
+Everything above works with zero API keys.
 
-**[Download v1 for Windows 11](https://github.com/ONEPUNCHMAN411/Jarvis/releases/latest)**
+## Install (Windows 11)
 
-</div>
+1. Install Python 3.12+ from https://www.python.org/downloads/
+   (tick **"Add python.exe to PATH"**).
+2. Unzip this folder anywhere, double-click **JARVIS.bat**.
+3. First run: a setup wizard asks for optional keys (Groq, Fish Audio).
+   Press Enter through all of it — offline mode works fine.
+4. The Jarvis window opens and says "Jarvis online."
 
----
+## Keys (all optional)
 
-## What you need
-
-- Windows 11
-- Python 3.12+
-- 8 GB RAM (16 if you want local models) (GPU with at least 4 GB VRAM recommended)
-- An API key for at least one provider (Groq is free, no card required)
-
----
-
-## Install
-
-Installer is ~1.8 GB. CUDA is bundled, that's why it's big.
-
-**[JARVIS-Setup-v1.exe](https://github.com/ONEPUNCHMAN411/Jarvis/releases/latest)**
-
-Or from source:
-
-```bash
-git clone https://github.com/ONEPUNCHMAN411/Jarvis.git
-cd Jarvis
-pip install -e .
-python -m jarvis
-```
-
-First launch runs a setup wizard. Pick Groq, paste your key, done.
-
----
-
-## What it does
-
-- Talk to it, it talks back. Uses faster-whisper on CUDA, Edge TTS output, Silero VAD so it doesn't transcribe silence and fan noise
-- Full desktop control: clicks, keyboard, drag-drop, screenshots, clipboard, app launcher, volume, brightness
-- Playwright browser automation against real sites with JavaScript, not a scraping wrapper
-- 50+ built-in tools covering web search, file management, system info, news
-- Plugins for Gmail, Google Calendar, task scheduling, and more
-- Switch providers live from the chat header, no restart needed
-- Wake word detection if you install openwakeword (experimental, works fine with a decent USB mic but unreliable with a laptop mic)
-
----
-
-## Providers
-
-Start with Groq. It's free and the latency is good.
-
-| Provider | Cost | Notes |
-|----------|------|-------|
-| Groq | Free tier | Llama 3.3 70B, fast |
-| Gemini | Free tier | Google auth, no API key needed |
-| Mistral | Pay per use | Solid at code |
-| OpenAI | Pay per use | GPT-4o |
-| Ollama | Free | Fully local, nothing sent out |
-| OpenRouter | Pay per use | 50+ models in one place |
-
----
-
-## How it works
-
-Voice runs faster-whisper with Silero VAD gating it. Without VAD the STT model fires on silence and fan noise, latency adds up fast. With it, transcription only runs when someone's actually talking.
-
-Computer control goes through the Windows UI Automation accessibility tree instead of pixel coordinates. Most LLMs can't see your screen, they need structured data about what's in each window. The accessibility tree gives that without needing a vision model. Vision is still available as a fallback if the tree doesn't expose what you need.
-
-The orb is a raymarched GLSL sphere in a QOpenGLWidget. It was running at 60fps with 4x MSAA and 5 noise octaves, which ate GPU headroom the STT model needed. Dropped to 25fps, 2x MSAA, 3 octaves. Still looks the same, uses a fraction of the compute.
-
-Provider routing tries your primary, falls back down a configured chain when the health check fails. So if Groq rate limits you it moves to the next provider instead of throwing an error.
-
----
-
-## Config
-
-Most settings live in the Settings panel inside the app. For the few things not exposed there, the base config is at `config/default.yaml` inside the install folder. The app also writes runtime settings to `%USERPROFILE%\.jarvis\settings.json`.
+They go in `config/local.yaml` (created by the wizard, never committed):
 
 ```yaml
-# config/default.yaml - notable options
-voice:
-  stt_model: "tiny.en"     # medium.en is noticeably better, also noticeably slower
-  wake_word: "hey jarvis"
-
-ai:
-  primary_provider: "groq"
-  temperature: 0.7
+groq_api_key: "gsk_..."        # AI answers. Free at console.groq.com
+fish_api_key: "..."            # cloud voice
+fish_reference_id: "..."      # your Fish Audio voice
+tts_engine: "fish"            # switch voice from "sapi" to "fish"
 ```
 
----
+## Project layout
 
-## Keyboard shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Shift+J` | Open JARVIS from anywhere |
-| `Ctrl+K` | Command palette |
-| `Ctrl+F` | Search chat |
-| `Ctrl+Enter` | Send message |
-| `↑` / `↓` | Input history |
-
----
-
-## Local API
-
-JARVIS exposes a local HTTP API on `localhost:8765` so you can drive it programmatically without touching the UI.
-
-```bash
-# Check if JARVIS is running and ready
-curl http://localhost:8765/status
-
-# Send a message (same as typing in the chat)
-curl -s -X POST http://localhost:8765/chat \
-     -H "Content-Type: application/json" \
-     -d '{"text": "what time is it"}'
-
-# Call a tool directly by name
-curl -s -X POST http://localhost:8765/tool \
-     -H "Content-Type: application/json" \
-     -d '{"tool": "show_panel", "args": {"panel": "todo"}}'
-
-# List all available tool names
-curl http://localhost:8765/tools
+```
+JARVIS.bat            Windows launcher
+config.yaml           defaults (safe to read, no secrets)
+config/local.yaml     your keys (gitignored)
+jarvis/voice/speak.py TTS: SAPI default, Fish Audio optional
+jarvis/voice/listen.py Vosk STT, push-to-talk + wake word
+jarvis/brain.py       offline brain, Groq when a key is set
+jarvis/control/pc.py  open apps, type, keys, volume
+jarvis/plugins/       tiny plugin API + 3 working examples
+jarvis/ui.py          tkinter window
+jarvis/setup_wizard.py first-run console wizard
+tests/                mocked smoke tests (pytest)
 ```
 
-The port can be changed in Settings → Advanced, or by editing `%USERPROFILE%\.jarvis\settings.json`:
+## Running tests
 
-```json
-{ "local_api_port": 8766 }
+```
+pip install -r requirements.txt
+python -m pytest tests/ -q
 ```
 
----
-
-## Build
-
-```bash
-python build_exe.py
-# outputs dist/JARVIS.exe (~1.8 GB with CUDA)
-```
-
----
-
-## Credits
-
-- [faster-whisper](https://github.com/SYSTRAN/faster-whisper): CTranslate2 Whisper inference
-- [Silero VAD](https://github.com/snakers4/silero-vad): voice activity detection
-- [Playwright](https://playwright.dev): browser automation
-- [pywinauto](https://github.com/pywinauto/pywinauto): Windows UI Automation
-- [edge-tts](https://github.com/rany2/edge-tts): text to speech
-
----
-
-MIT. Built for [Hack Club Stardance](https://stardance.hackclub.com) by Venkata.M.
-
-
+No mic, speaker, or network needed — everything is mocked.

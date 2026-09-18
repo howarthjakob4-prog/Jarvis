@@ -1,2 +1,4 @@
-__version__ = "1.0.0"
-__author__ = "JARVIS"
+"""Jarvis-v2: a clean, minimal voice assistant for Windows."""
+
+__version__ = "2.0.0"
+__all__ = ["__version__"]

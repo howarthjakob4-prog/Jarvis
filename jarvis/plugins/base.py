@@ -1,28 +1,28 @@
-from abc import ABC, abstractmethod
-from jarvis.models import ToolDefinition
+"""Tiny plugin API.
 
-class Plugin(ABC):
-    """Base class for all JARVIS plugins."""
+A plugin matches text, then runs and returns a reply string.
+To add one: create mything_plugin.py in this package with a
+module-level `plugin = MyPlugin()` instance. It loads automatically.
+"""
 
-    def __init__(self, name: str):
-        self.name = name
-        self.enabled = True
 
-    @abstractmethod
-    async def initialize(self) -> None:
-        """Initialize the plugin (setup credentials, connections, etc)."""
-        pass
+class Plugin:
+    name = "base"
+    description = ""
 
-    @abstractmethod
-    async def shutdown(self) -> None:
-        """Cleanup on shutdown."""
-        pass
+    def bind(self, brain):
+        """Called once with the Brain that owns this plugin.
 
-    @abstractmethod
-    def get_tools(self) -> list[tuple[ToolDefinition, callable]]:
-        """Return list of (ToolDefinition, handler) tuples."""
-        pass
+        Gives access to brain.config, and lets background work announce
+        later via brain.alert(text) (spoken + logged + popup by the UI).
+        The default just stores the brain; override only if you need it.
+        """
+        self.brain = brain
 
-    async def health_check(self) -> bool:
-        """Check if plugin is healthy."""
-        return self.enabled
+    def match(self, text: str) -> bool:
+        """True if this plugin should handle the (lowercased) text."""
+        return False
+
+    def run(self, text: str) -> str:
+        """Handle the text. Return the reply to speak and show."""
+        return ""
