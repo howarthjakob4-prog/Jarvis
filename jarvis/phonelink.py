@@ -95,6 +95,7 @@ class PhoneLink:
         self._stop.set()
 
     def _loop(self):
+        self.beat()  # check in right away instead of waiting a full interval
         while not self._stop.wait(self.interval):
             try:
                 self.beat()
@@ -128,25 +129,27 @@ class PhoneLink:
             self.log(f"Phone link check-in failed: {exc}")
 
     def handle_command(self, cmd):
-        """Carry out one command dict. Returns True when handled."""
+        """Carry out one command dict. Returns True only when it succeeded."""
         ctype = (cmd or {}).get("type")
         if ctype == COMMAND_LOCK:
-            self._lock_workstation()
-            return True
+            return self._lock_workstation()
         if ctype:
             self.log(f"Ignoring unknown phone command: {ctype!r}")
         return False
 
     # -- actions --------------------------------------------------------
     def _lock_workstation(self):
+        """Lock the workstation. Returns True on success, False on failure."""
         try:
             user32 = getattr(ctypes, "windll", None)
             if user32 is None:
                 raise RuntimeError("not Windows")
             user32.LockWorkStation()
             self.log("Computer locked from phone.")
+            return True
         except Exception as exc:
             self.log(f"Lock failed: {exc}")
+            return False
 
     # -- http helpers ---------------------------------------------------
     def _post(self, path, payload):

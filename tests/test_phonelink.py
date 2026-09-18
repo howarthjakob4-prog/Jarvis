@@ -116,11 +116,20 @@ def test_lock_command_runs_and_acks(monkeypatch):
     http = FakeHttp(commands=[{"id": "c1", "type": "lock"}])
     link, logs = make_link(http=http)
     locked = []
-    monkeypatch.setattr(link, "_lock_workstation", lambda: locked.append(True))
+    monkeypatch.setattr(link, "_lock_workstation",
+                        lambda: locked.append(True) or True)
     link.beat()
     assert locked == [True]
     acks = [p for u, p in http.posts if u.endswith("/link/ack")]
     assert acks == [{"secret": "s3cret", "id": "c1"}]
+
+
+def test_failed_lock_is_not_acked(monkeypatch):
+    http = FakeHttp(commands=[{"id": "c2", "type": "lock"}])
+    link, logs = make_link(http=http)
+    monkeypatch.setattr(link, "_lock_workstation", lambda: False)
+    link.beat()
+    assert not any(u.endswith("/link/ack") for u, _ in http.posts)
 
 
 def test_unknown_command_ignored_not_acked():
