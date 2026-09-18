@@ -1,0 +1,15 @@
+# Jarvis-v2 defaults. Secrets go in config/local.yaml (gitignored), never here.
+tts_engine: sapi        # "sapi" (Windows built-in voice) or "fish" (Fish Audio cloud voice)
+voice_enabled: true
+fish_api_key: ""
+fish_reference_id: ""
+fish_model: "s2.1-pro-free"
+groq_api_key: ""
+groq_model: "llama-3.3-70b-versatile"
+wake_word: false
+wake_phrase: "hey jarvis"
+mic_timeout: 8
+always_on_top: true
+ticker_refresh_minutes: 15
+weather_city: ""
+schedule_file: "config/schedule.yaml"

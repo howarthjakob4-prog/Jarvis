@@ -1,56 +1,69 @@
-import yaml
+"""Configuration: config.yaml holds defaults, config/local.yaml holds secrets.
+
+local.yaml is gitignored. Anything set there overrides config.yaml.
+"""
 from pathlib import Path
-from loguru import logger
-from jarvis.models import JarvisConfig
 
-def load_config(config_dir: Path = None) -> JarvisConfig:
-    if config_dir is None:
-        config_dir = Path(__file__).parent.parent / "config"
+import yaml
 
-    default_yaml = config_dir / "default.yaml"
-    user_yaml = config_dir / "user.yaml"
+DEFAULTS = {
+    # "sapi" = Windows built-in voice, zero-config. "fish" = Fish Audio cloud voice.
+    "tts_engine": "sapi",
+    "voice_enabled": True,
+    "fish_api_key": "",
+    "fish_reference_id": "",
+    "fish_model": "s2.1-pro-free",
+    # Groq = free-tier AI answers. Empty = offline mode (still fully usable).
+    "groq_api_key": "",
+    "groq_model": "llama-3.3-70b-versatile",
+    # Voice input
+    "wake_word": False,
+    "wake_phrase": "hey jarvis",
+    "mic_timeout": 8,  # seconds per push-to-talk capture
+    # Panel (see ui.py)
+    "always_on_top": True,   # keep the panel above other windows
+    "ticker_refresh_minutes": 15,  # how often the news ticker refetches
+    # Weather plugin: default city for "what's the weather" (blank = ask).
+    "weather_city": "",
+    # Schedule plugin: user-editable daily plan, relative to project root.
+    "schedule_file": "config/schedule.yaml",
+}
 
-    if not default_yaml.exists():
-        logger.warning(f"Default config not found at {default_yaml}")
-        return JarvisConfig()
 
-    with open(default_yaml, "r") as f:
-        default_config = yaml.safe_load(f) or {}
+def project_root() -> Path:
+    return Path(__file__).resolve().parent.parent
 
-    user_config = {}
-    if user_yaml.exists():
-        with open(user_yaml, "r") as f:
-            user_config = yaml.safe_load(f) or {}
 
-    merged = _deep_merge(default_config, user_config)
+def default_config_path() -> Path:
+    return project_root() / "config.yaml"
 
-    try:
-        config = JarvisConfig(**merged)
-        logger.info(f"Loaded config from {config_dir}")
-        return config
-    except Exception as e:
-        logger.error(f"Error loading config: {e}")
-        logger.info("Using default config")
-        return JarvisConfig()
 
-def _deep_merge(base: dict, override: dict) -> dict:
-    result = base.copy()
-    for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge(result[key], value)
-        else:
-            result[key] = value
-    return result
+def local_config_path() -> Path:
+    return project_root() / "config" / "local.yaml"
 
-def save_user_config(config: JarvisConfig, config_dir: Path = None) -> None:
-    if config_dir is None:
-        config_dir = Path(__file__).parent.parent / "config"
 
-    config_dir.mkdir(parents=True, exist_ok=True)
-    user_yaml = config_dir / "user.yaml"
+def load(default_path=None, local_path=None):
+    """Load config. Optional paths exist so tests can use temp files."""
+    cfg = dict(DEFAULTS)
+    for path in (default_path or default_config_path(),
+                 local_path or local_config_path()):
+        if path.is_file():
+            with open(path, encoding="utf-8") as fh:
+                data = yaml.safe_load(fh) or {}
+            if isinstance(data, dict):
+                cfg.update(data)
+    return cfg
 
-    user_data = config.model_dump(mode="json")
-    with open(user_yaml, "w") as f:
-        yaml.dump(user_data, f, default_flow_style=False)
 
-    logger.info(f"Saved user config to {user_yaml}")
+def save_local(values, local_path=None):
+    """Merge values into config/local.yaml. Returns the path written."""
+    path = Path(local_path) if local_path else local_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = {}
+    if path.is_file():
+        with open(path, encoding="utf-8") as fh:
+            existing = yaml.safe_load(fh) or {}
+    existing.update(values)
+    with open(path, "w", encoding="utf-8") as fh:
+        yaml.safe_dump(existing, fh, default_flow_style=False, sort_keys=True)
+    return path
