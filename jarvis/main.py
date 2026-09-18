@@ -3,6 +3,7 @@ from datetime import datetime
 
 from .brain import Brain
 from .config import load
+from .phonelink import PhoneLink
 from .ui import JarvisUI
 from .voice.listen import mic_available
 from .voice.speak import Speaker
@@ -45,6 +46,9 @@ def main():
     # spoken + timestamped in the activity log + popup.
     brain.alert_handler = ui.announce_alert
     ui.log_line("Jarvis", line)
+    # Phone link: PC checks in with the phone dashboard (on/off status)
+    # and picks up commands like "lock". Best-effort background thread.
+    PhoneLink(config, log=lambda msg: ui.log_line("Link", msg)).start()
     ui.run()
 
 
