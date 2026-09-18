@@ -16,7 +16,7 @@ DEFAULTS = {
     "fish_model": "s2.1-pro-free",
     # ElevenLabs: key + voice live in config/local.yaml (gitignored), never in git.
     "elevenlabs_api_key": "",
-    "elevenlabs_voice_id": "",  # blank = stock default voice
+    "elevenlabs_voice_id": "",  # blank = Jarvis's default stock voice
     "elevenlabs_model": "eleven_multilingual_v2",
     # Groq = free-tier AI answers. Empty = offline mode (still fully usable).
     "groq_api_key": "",
