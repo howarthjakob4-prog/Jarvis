@@ -21,11 +21,12 @@ import requests
 
 FISH_TTS_URL = "https://api.fish.audio/v1/tts"
 ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-# Jarvis's ElevenLabs voice. A widely-used stock premade voice, so the engine
-# works with just an API key (ElevenLabs reroutes legacy voice IDs to their
-# replacements, so this keeps resolving). To use a different voice, put any
-# voice ID from your ElevenLabs voice library in elevenlabs_voice_id.
-ELEVENLABS_DEFAULT_VOICE = "21m00Tcm4TlvDq8ikWAM"
+# Jarvis's ElevenLabs voice: "George" — a deep, calm British male, the classic
+# Jarvis-assistant pick (used as the default voice by the Iron-Man-style
+# Jarvis assistant at github.com/eldarttyy/jarvis-voice-assistant). To use a
+# different voice, put any voice ID from your ElevenLabs voice library in
+# elevenlabs_voice_id.
+ELEVENLABS_DEFAULT_VOICE = "JBFqnCBsd6RMkjVDRZzb"
 
 
 class TTSError(Exception):
