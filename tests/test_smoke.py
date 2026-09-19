@@ -215,7 +215,8 @@ def test_create_engine_elevenlabs_needs_key():
 
 def test_create_engine_elevenlabs_default_voice():
     eng = create_engine({"tts_engine": "elevenlabs", "elevenlabs_api_key": "k"})
-    assert eng.voice_id  # stock default voice when none configured
+    # Blank voice choice must fall back to George (the Jarvis default).
+    assert eng.voice_id == "JBFqnCBsd6RMkjVDRZzb"
 
 
 class _FakeResp:
