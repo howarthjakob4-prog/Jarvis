@@ -27,7 +27,14 @@ from jarvis import config as config_mod  # noqa: E402
 from jarvis.brain import Brain  # noqa: E402
 from jarvis.plugins import load_plugins  # noqa: E402
 from jarvis.voice import listen as listen_mod  # noqa: E402
-from jarvis.voice.speak import FishTTS, SapiTTS, Speaker, TTSError, create_engine  # noqa: E402
+from jarvis.voice.speak import (  # noqa: E402
+    ElevenLabsTTS,
+    FishTTS,
+    SapiTTS,
+    Speaker,
+    TTSError,
+    create_engine,
+)
 
 
 # ----- config ---------------------------------------------------------------
@@ -192,6 +199,66 @@ def test_create_engine_unknown():
 def test_create_engine_fish_needs_key():
     with pytest.raises(TTSError):
         create_engine({"tts_engine": "fish", "fish_api_key": ""})
+
+
+def test_create_engine_elevenlabs():
+    eng = create_engine({"tts_engine": "elevenlabs", "elevenlabs_api_key": "k",
+                         "elevenlabs_voice_id": "v", "elevenlabs_model": "m"})
+    assert isinstance(eng, ElevenLabsTTS)
+    assert eng.voice_id == "v"
+
+
+def test_create_engine_elevenlabs_needs_key():
+    with pytest.raises(TTSError):
+        create_engine({"tts_engine": "elevenlabs", "elevenlabs_api_key": ""})
+
+
+def test_create_engine_elevenlabs_default_voice():
+    eng = create_engine({"tts_engine": "elevenlabs", "elevenlabs_api_key": "k"})
+    # Blank voice choice must fall back to George (the Jarvis default).
+    assert eng.voice_id == "JBFqnCBsd6RMkjVDRZzb"
+
+
+class _FakeResp:
+    def __init__(self, status_code=200, content=b"", text=""):
+        self.status_code = status_code
+        self.content = content
+        self.text = text
+
+
+def test_elevenlabs_synthesize_uses_key_header_and_wraps_wav(monkeypatch):
+    import wave
+
+    calls = {}
+
+    def fake_post(url, params=None, json=None, headers=None, timeout=None):
+        calls["url"] = url
+        calls["params"] = params
+        calls["json"] = json
+        calls["headers"] = headers
+        return _FakeResp(200, content=b"\x00\x01" * 8000)  # 16kHz mono PCM
+
+    monkeypatch.setattr("jarvis.voice.speak.requests.post", fake_post)
+    eng = ElevenLabsTTS(api_key="sekret", voice_id="voice123")
+    wav = eng._synthesize("hello")
+    assert "voice123" in calls["url"]
+    assert calls["headers"]["xi-api-key"] == "sekret"
+    assert calls["params"]["output_format"] == "pcm_16000"
+    assert calls["json"]["text"] == "hello"
+    assert wav[:4] == b"RIFF"
+    with wave.open(__import__("io").BytesIO(wav), "rb") as w:
+        assert w.getnchannels() == 1
+        assert w.getsampwidth() == 2
+        assert w.getframerate() == 16000
+
+
+def test_elevenlabs_http_error_raises(monkeypatch):
+    def fake_post(url, params=None, json=None, headers=None, timeout=None):
+        return _FakeResp(401, content=b"", text="invalid api key")
+    monkeypatch.setattr("jarvis.voice.speak.requests.post", fake_post)
+    eng = ElevenLabsTTS(api_key="bad")
+    with pytest.raises(TTSError):
+        eng._synthesize("hello")
 
 
 def test_speaker_toggle_mutes():

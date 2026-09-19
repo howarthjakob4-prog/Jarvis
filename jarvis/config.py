@@ -7,12 +7,17 @@ from pathlib import Path
 import yaml
 
 DEFAULTS = {
-    # "sapi" = Windows built-in voice, zero-config. "fish" = Fish Audio cloud voice.
+    # "sapi" = Windows built-in voice, zero-config. "fish" = Fish Audio cloud
+    # voice. "elevenlabs" = ElevenLabs cloud voice.
     "tts_engine": "sapi",
     "voice_enabled": True,
     "fish_api_key": "",
     "fish_reference_id": "",
     "fish_model": "s2.1-pro-free",
+    # ElevenLabs: key + voice live in config/local.yaml (gitignored), never in git.
+    "elevenlabs_api_key": "",
+    "elevenlabs_voice_id": "",  # blank = "George" (deep British male), Jarvis's default
+    "elevenlabs_model": "eleven_multilingual_v2",
     # Groq = free-tier AI answers. Empty = offline mode (still fully usable).
     "groq_api_key": "",
     "groq_model": "llama-3.3-70b-versatile",
